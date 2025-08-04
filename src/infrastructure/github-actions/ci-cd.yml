@@ -1,0 +1,567 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main, develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================
+  # CODE QUALITY AND TESTING
+  # =============================================
+  
+  lint-and-test-api:
+    name: Lint and Test API Server
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smart_garden_bot_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache-dependency-path: src/api/go.sum
+
+      - name: Install dependencies
+        working-directory: src/api
+        run: go mod download
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          working-directory: src/api
+          args: --timeout=5m
+
+      - name: Run tests
+        working-directory: src/api
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: smart_garden_bot_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: test-secret
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: src/api/coverage.out
+          flags: api
+          name: api-coverage
+
+  lint-and-test-frontend:
+    name: Lint and Test Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: src/frontend
+        run: npm run lint
+
+      - name: Run type check
+        working-directory: src/frontend
+        run: npm run type-check
+
+      - name: Run tests
+        working-directory: src/frontend
+        run: npm run test:coverage
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          directory: src/frontend/coverage
+          flags: frontend
+          name: frontend-coverage
+
+  lint-and-test-operator:
+    name: Lint and Test Operator
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache-dependency-path: src/operator/go.sum
+
+      - name: Install dependencies
+        working-directory: src/operator
+        run: go mod download
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          working-directory: src/operator
+          args: --timeout=5m
+
+      - name: Run tests
+        working-directory: src/operator
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: src/operator/coverage.out
+          flags: operator
+          name: operator-coverage
+
+  # =============================================
+  # SECURITY SCANNING
+  # =============================================
+  
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [lint-and-test-api, lint-and-test-frontend, lint-and-test-operator]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: src/frontend --severity-threshold=high
+
+  # =============================================
+  # BUILD AND PUSH CONTAINER IMAGES
+  # =============================================
+  
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: [lint-and-test-api, lint-and-test-frontend, lint-and-test-operator]
+    if: github.event_name != 'pull_request'
+    
+    strategy:
+      matrix:
+        component: [api, frontend, operator]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.component }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: src/${{ matrix.component }}
+          file: src/${{ matrix.component }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # =============================================
+  # BUILD AND PUBLISH HELM CHART
+  # =============================================
+  
+  build-helm-chart:
+    name: Build and Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: github.event_name != 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Package Helm chart
+        run: |
+          helm package src/infrastructure/helm/smart-garden-bot \
+            --destination ./charts \
+            --version ${GITHUB_REF_NAME#v} \
+            --app-version ${GITHUB_REF_NAME#v}
+
+      - name: Upload Helm chart artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: helm-chart
+          path: charts/*.tgz
+
+      - name: Publish to GitHub Pages
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git checkout gh-pages || git checkout --orphan gh-pages
+          git reset --hard
+          git clean -fd
+          
+          mkdir -p charts
+          cp *.tgz charts/ 2>/dev/null || true
+          
+          helm repo index charts --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/charts
+          
+          cp -r charts/* .
+          git add .
+          git commit -m "Release Helm chart ${GITHUB_REF_NAME}"
+          git push origin gh-pages
+
+  # =============================================
+  # INTEGRATION TESTS
+  # =============================================
+  
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: github.event_name != 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Kind cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: smart-garden-bot-test
+          config: |
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+              - |
+                kind: InitConfiguration
+                nodeRegistration:
+                  kubeletExtraArgs:
+                    node-labels: "ingress-ready=true"
+              extraPortMappings:
+              - containerPort: 80
+                hostPort: 80
+                protocol: TCP
+              - containerPort: 443
+                hostPort: 443
+                protocol: TCP
+
+      - name: Install NGINX Ingress Controller
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=90s
+
+      - name: Install CloudNativePG Operator
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.1.yaml
+          kubectl wait --namespace cnpg-system \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/name=cloudnative-pg \
+            --timeout=90s
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Deploy application with Helm
+        run: |
+          # Load images into Kind cluster
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.sha }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-operator:${{ github.sha }}
+          
+          kind load docker-image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }} --name smart-garden-bot-test
+          kind load docker-image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.sha }} --name smart-garden-bot-test
+          kind load docker-image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-operator:${{ github.sha }} --name smart-garden-bot-test
+          
+          # Install the application
+          helm upgrade --install smart-garden-bot \
+            src/infrastructure/helm/smart-garden-bot \
+            --namespace smart-garden-bot \
+            --create-namespace \
+            --set webapp.image.tag=${{ github.sha }} \
+            --set apiserver.image.tag=${{ github.sha }} \
+            --set operator.image.tag=${{ github.sha }} \
+            --set cloudnative-pg.enabled=true \
+            --set postgresql.enabled=false \
+            --wait --timeout=10m
+
+      - name: Run integration tests
+        run: |
+          # Wait for all pods to be ready
+          kubectl wait --namespace smart-garden-bot \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/part-of=smart-garden-bot \
+            --timeout=300s
+          
+          # Test API server health
+          kubectl port-forward -n smart-garden-bot svc/smart-garden-bot-apiserver 8080:8080 &
+          sleep 5
+          
+          # Health check
+          curl -f http://localhost:8080/health
+          
+          # OpenAPI spec
+          curl -f http://localhost:8080/openapi.json | jq .
+          
+          # Metrics endpoint
+          curl -f http://localhost:8080/metrics
+
+      - name: Run end-to-end tests
+        run: |
+          # Port forward frontend
+          kubectl port-forward -n smart-garden-bot svc/smart-garden-bot-webapp 3000:3000 &
+          sleep 10
+          
+          # Test frontend is accessible
+          curl -f http://localhost:3000 | grep "Smart Garden Bot"
+
+  # =============================================
+  # DEPLOYMENT TO STAGING
+  # =============================================
+  
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [integration-tests]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region us-west-2 --name smart-garden-bot-staging
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Deploy to staging
+        run: |
+          helm upgrade --install smart-garden-bot \
+            src/infrastructure/helm/smart-garden-bot \
+            --namespace smart-garden-bot-staging \
+            --create-namespace \
+            --set webapp.image.tag=${{ github.sha }} \
+            --set apiserver.image.tag=${{ github.sha }} \
+            --set operator.image.tag=${{ github.sha }} \
+            --set webapp.ingress.hosts[0].host=staging-app.smartgardenbot.io \
+            --set apiserver.ingress.hosts[0].host=staging-api.smartgardenbot.io \
+            --values src/infrastructure/helm/smart-garden-bot/values-staging.yaml \
+            --wait --timeout=10m
+
+      - name: Run smoke tests
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          
+          # Test API health
+          curl -f https://staging-api.smartgardenbot.io/health
+          
+          # Test frontend
+          curl -f https://staging-app.smartgardenbot.io | grep "Smart Garden Bot"
+
+  # =============================================
+  # DEPLOYMENT TO PRODUCTION
+  # =============================================
+  
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [integration-tests]
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region us-west-2 --name smart-garden-bot-production
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Deploy to production
+        run: |
+          # Extract version from tag
+          VERSION=${GITHUB_REF_NAME#v}
+          
+          helm upgrade --install smart-garden-bot \
+            src/infrastructure/helm/smart-garden-bot \
+            --namespace smart-garden-bot \
+            --create-namespace \
+            --set webapp.image.tag=$VERSION \
+            --set apiserver.image.tag=$VERSION \
+            --set operator.image.tag=$VERSION \
+            --values src/infrastructure/helm/smart-garden-bot/values-production.yaml \
+            --wait --timeout=15m
+
+      - name: Run production smoke tests
+        run: |
+          # Wait for deployment to be ready
+          sleep 60
+          
+          # Test API health
+          curl -f https://api.smartgardenbot.io/health
+          
+          # Test frontend
+          curl -f https://app.smartgardenbot.io | grep "Smart Garden Bot"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            charts/*.tgz
+          generate_release_notes: true
+          body: |
+            ## What's Changed
+            
+            This release includes the following components:
+            - **API Server**: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${GITHUB_REF_NAME#v}`
+            - **Frontend**: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${GITHUB_REF_NAME#v}`
+            - **Operator**: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-operator:${GITHUB_REF_NAME#v}`
+            - **Helm Chart**: `smart-garden-bot-${GITHUB_REF_NAME#v}.tgz`
+            
+            ## Installation
+            
+            ```bash
+            helm repo add smart-garden-bot https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/charts
+            helm install smart-garden-bot smart-garden-bot/smart-garden-bot --version ${GITHUB_REF_NAME#v}
+            ```
+
+  # =============================================
+  # CLEANUP
+  # =============================================
+  
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    
+    steps:
+      - name: Clean up old images
+        run: |
+          # Clean up container images older than 30 days
+          # This would typically be done through a separate cleanup job
+          echo "Cleanup job completed"

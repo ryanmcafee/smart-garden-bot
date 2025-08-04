@@ -1,0 +1,59 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smart-garden-bot-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: smart-garden-bot
+  source:
+    repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git
+    path: helm/smart-garden-bot
+    targetRevision: main
+    helm:
+      valueFiles:
+      - values.yaml
+      - values-production.yaml
+      parameters:
+      - name: global.imageRegistry
+        value: ghcr.io
+      - name: webApp.image.tag
+        value: v0.1.0
+      - name: apiServer.image.tag
+        value: v0.1.0
+      - name: operator.image.tag
+        value: v0.1.0
+      - name: ingress.hosts[0].host
+        value: app.smartgardenbot.io
+      - name: ingress.hosts[1].host
+        value: api.smartgardenbot.io
+      - name: postgresql.auth.postgresPassword
+        value: $postgresql:postgres-password
+      - name: postgresql.auth.password
+        value: $postgresql:password
+      - name: redis.auth.password
+        value: $redis:redis-password
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: smart-garden-bot
+  syncPolicy:
+    # Manual sync for production - require approval
+    automated: null
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        maxDuration: 5m0s
+        factor: 2
+  revisionHistoryLimit: 20
+  info:
+  - name: "Environment"
+    value: "Production"
+  - name: "Owner"
+    value: "Smart Garden Bot Team"
+  - name: "Support"
+    value: "team@smartgardenbot.io"

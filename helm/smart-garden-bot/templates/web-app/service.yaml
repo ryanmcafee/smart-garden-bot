@@ -1,0 +1,23 @@
+{{- if .Values.webApp.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "smart-garden-bot.labels.web" . | nindent 4 }}
+  {{- with .Values.webApp.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+    argocd.argoproj.io/sync-wave: "2"
+  {{- end }}
+spec:
+  type: {{ .Values.webApp.service.type }}
+  ports:
+    - port: {{ .Values.webApp.service.port }}
+      targetPort: {{ .Values.webApp.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "smart-garden-bot.selectorLabels.web" . | nindent 4 }}
+{{- end }}

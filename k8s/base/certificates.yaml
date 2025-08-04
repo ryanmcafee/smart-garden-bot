@@ -1,0 +1,105 @@
+---
+# Let's Encrypt ClusterIssuer for production
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@smartgardenbot.io
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+    - dns01:
+        route53:
+          region: us-east-1
+          accessKeyID: AKIAI...
+          secretAccessKeySecretRef:
+            name: route53-credentials
+            key: secret-access-key
+
+---
+# Let's Encrypt ClusterIssuer for staging/development
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@smartgardenbot.io
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+    - dns01:
+        route53:
+          region: us-east-1
+          accessKeyID: AKIAI...
+          secretAccessKeySecretRef:
+            name: route53-credentials
+            key: secret-access-key
+
+---
+# Route53 credentials for DNS01 challenge
+apiVersion: v1
+kind: Secret
+metadata:
+  name: route53-credentials
+  namespace: cert-manager
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+type: Opaque
+data:
+  secret-access-key: Y2hhbmdlbWU=  # changeme - should be replaced with real AWS secret key
+
+---
+# Certificate for production domain
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: smartgardenbot-prod-tls
+  namespace: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  secretName: smartgardenbot-prod-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: smartgardenbot.io
+  dnsNames:
+  - smartgardenbot.io
+  - www.smartgardenbot.io
+  - app.smartgardenbot.io
+  - api.smartgardenbot.io
+
+---
+# Certificate for development domain
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: smartgardenbot-dev-tls
+  namespace: smart-garden-bot-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  secretName: smartgardenbot-dev-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  commonName: dev.smartgardenbot.io
+  dnsNames:
+  - dev.smartgardenbot.io
+  - dev.app.smartgardenbot.io
+  - dev.api.smartgardenbot.io

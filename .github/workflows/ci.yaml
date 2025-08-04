@@ -1,0 +1,394 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'architecture.md'
+      - 'prd.md'
+  pull_request:
+    branches: [ main, develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'architecture.md'
+      - 'prd.md'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_PREFIX: smart-garden-bot
+
+jobs:
+  # Security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          publishToken: ${{ secrets.SEMGREP_TOKEN }}
+        env:
+          SEMGREP_RULES: >-
+            p/security-audit
+            p/secrets
+            p/dockerfile
+            p/kubernetes
+            p/golang
+            p/typescript
+
+  # Lint and test Go code
+  go-quality:
+    name: Go Quality Checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          go install github.com/securecodewarrior/sast-scan@latest
+
+      - name: Run golangci-lint
+        run: golangci-lint run --verbose --timeout 5m
+
+      - name: Run tests with coverage
+        run: |
+          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+          flags: go
+          name: go-coverage
+
+      - name: Build binaries
+        run: |
+          # Build API server
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o bin/api ./cmd/api
+          # Build operator
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o bin/operator ./cmd/operator
+
+  # Lint and test TypeScript/Next.js code
+  frontend-quality:
+    name: Frontend Quality Checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    defaults:
+      run:
+        working-directory: ./web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Cache dependencies
+        run: deno cache deps.ts
+
+      - name: Lint TypeScript
+        run: deno lint
+
+      - name: Format check
+        run: deno fmt --check
+
+      - name: Type check
+        run: deno check **/*.ts **/*.tsx
+
+      - name: Run tests
+        run: deno test --allow-all --coverage=coverage
+
+      - name: Generate coverage report
+        run: deno coverage coverage --lcov --output=coverage.lcov
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./web/coverage.lcov
+          flags: frontend
+          name: frontend-coverage
+
+  # Validate Kubernetes manifests and Helm charts
+  k8s-validation:
+    name: Kubernetes Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Lint Helm charts
+        run: |
+          helm lint helm/smart-garden-bot
+          helm template smart-garden-bot helm/smart-garden-bot > /tmp/manifests.yaml
+
+      - name: Validate Kubernetes manifests
+        run: |
+          # Install kubeval
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo mv kubeval /usr/local/bin
+          
+          # Validate base manifests
+          kubeval k8s/base/*.yaml
+          kubeval k8s/crds/*.yaml
+          kubeval k8s/rbac/*.yaml
+          
+          # Validate Helm template output
+          kubeval /tmp/manifests.yaml
+
+      - name: Run Polaris security scan
+        run: |
+          # Install Polaris
+          wget https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz
+          tar -xzf polaris_linux_amd64.tar.gz
+          sudo mv polaris /usr/local/bin
+          
+          # Run security scan
+          polaris audit --audit-path /tmp/manifests.yaml --format json > polaris-results.json
+          
+      - name: Upload Polaris results
+        uses: actions/upload-artifact@v3
+        with:
+          name: polaris-results
+          path: polaris-results.json
+
+  # Build and scan container images
+  container-build:
+    name: Container Build & Scan
+    runs-on: ubuntu-latest
+    needs: [go-quality, frontend-quality]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    strategy:
+      matrix:
+        component: [web-app, api, operator]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/${{ matrix.component }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/${{ matrix.component }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Run Trivy vulnerability scanner on image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/${{ matrix.component }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-image-results.sarif'
+
+  # Integration tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [container-build]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgres://postgres:testpass@localhost:5432/testdb?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+        run: |
+          go test -tags=integration -v ./tests/integration/...
+
+  # E2E tests with kind
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [container-build, k8s-validation]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kind
+        uses: helm/kind-action@v1.8.0
+        with:
+          config: .github/kind-config.yaml
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Load Docker images into kind
+        run: |
+          kind load docker-image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/web-app:${{ github.sha }}
+          kind load docker-image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/api:${{ github.sha }}
+          kind load docker-image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/operator:${{ github.sha }}
+
+      - name: Install dependencies
+        run: |
+          # Install cert-manager
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+          kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=300s
+          
+          # Install NGINX ingress
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=300s
+
+      - name: Deploy application
+        run: |
+          helm install smart-garden-bot ./helm/smart-garden-bot \
+            --set webApp.image.tag=${{ github.sha }} \
+            --set apiServer.image.tag=${{ github.sha }} \
+            --set operator.image.tag=${{ github.sha }} \
+            --set ingress.enabled=false \
+            --wait --timeout=10m
+
+      - name: Run E2E tests
+        run: |
+          # Port forward for testing
+          kubectl port-forward svc/smart-garden-bot-api 8080:8080 &
+          kubectl port-forward svc/smart-garden-bot-web 3000:3000 &
+          sleep 10
+          
+          # Run E2E tests
+          go test -tags=e2e -v ./tests/e2e/...
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl describe pods -l app.kubernetes.io/name=smart-garden-bot
+          kubectl logs -l app.kubernetes.io/name=smart-garden-bot --tail=100
+
+  # Notify on completion
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [security, go-quality, frontend-quality, k8s-validation, integration-tests]
+    if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    steps:
+      - name: Notify Slack on success
+        if: needs.security.result == 'success' && needs.go-quality.result == 'success' && needs.frontend-quality.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#smart-garden-bot'
+          message: |
+            ✅ CI Pipeline Successful
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on failure
+        if: needs.security.result == 'failure' || needs.go-quality.result == 'failure' || needs.frontend-quality.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#smart-garden-bot'
+          message: |
+            ❌ CI Pipeline Failed
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

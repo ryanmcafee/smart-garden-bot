@@ -1,0 +1,148 @@
+# Development environment overrides
+global:
+  imageRegistry: "ghcr.io"
+  timezone: "America/New_York"
+
+webApp:
+  replicaCount: 1
+  image:
+    tag: "develop-latest"
+    pullPolicy: Always
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 250m
+    requests:
+      memory: 128Mi
+      cpu: 125m
+  autoscaling:
+    enabled: false
+  env:
+    NODE_ENV: development
+    NEXT_TELEMETRY_DISABLED: "1"
+    API_BASE_URL: "http://smart-garden-bot-api:8080/api/v1"
+    AUTH0_DOMAIN: "dev-smartgarden.auth0.com"
+    
+apiServer:
+  replicaCount: 1
+  image:
+    tag: "develop-latest"
+    pullPolicy: Always
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 500m
+    requests:
+      memory: 256Mi
+      cpu: 250m
+  autoscaling:
+    enabled: false
+  env:
+    GIN_MODE: "debug"
+    LOG_LEVEL: "debug"
+    AUTH0_DOMAIN: "dev-smartgarden.auth0.com"
+    AUTH0_AUDIENCE: "https://dev-api.smartgardenbot.io"
+    WEATHER_PROVIDERS: "openweather,openmeteo"
+    
+operator:
+  image:
+    tag: "develop-latest"
+    pullPolicy: Always
+  env:
+    LOG_LEVEL: "debug"
+    WEATHER_PROVIDERS: "openweather,openmeteo"
+
+# Lightweight PostgreSQL for development
+postgresql:
+  enabled: true
+  architecture: standalone
+  primary:
+    persistence:
+      size: 20Gi
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+  readReplicas:
+    replicaCount: 0
+
+# Lightweight Redis for development  
+redis:
+  enabled: true
+  architecture: standalone
+  master:
+    persistence:
+      size: 5Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 125m
+  replica:
+    replicaCount: 0
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+  hosts:
+    - host: dev.app.smartgardenbot.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: smart-garden-bot-web
+            port: 3000
+    - host: dev.api.smartgardenbot.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: smart-garden-bot-api
+            port: 8080
+  tls:
+    - secretName: smartgardenbot-dev-tls
+      hosts:
+        - dev.app.smartgardenbot.io
+        - dev.api.smartgardenbot.io
+
+# Development secrets (these would be replaced with real values)
+secrets:
+  database:
+    data:
+      database-url: "cG9zdGdyZXNxbDovL3NtYXJ0Z2FyZGVuOmRldnBhc3N3b3JkQHNtYXJ0LWdhcmRlbi1ib3QtcG9zdGdyZXNxbC1wcmltYXJ5OjU0MzIvc21hcnRnYXJkZW4/c3NsbW9kZT1kaXNhYmxl"
+  auth:
+    data:
+      auth0ClientSecret: "ZGV2LWNsaWVudC1zZWNyZXQ="
+      nextauthSecret: "ZGV2LW5leHRhdXRoLXNlY3JldA=="
+  weather:
+    data:
+      openweatherApiKey: "ZGV2LW9wZW53ZWF0aGVyLWFwaS1rZXk="
+      weatherApiKey: "ZGV2LXdlYXRoZXJhcGkta2V5"
+  stripe:
+    data:
+      stripeSecretKey: "c2tfdGVzdF9kZXYta2V5"
+      stripeWebhookSecret: "d2hfc2VjX2Rldl9rZXk="
+      stripePublishableKey: "cGtfdGVzdF9kZXYta2V5"
+
+# Disable production monitoring dependencies
+monitoring:
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+  loki:
+    enabled: false
+
+# Disable Istio in development
+istio:
+  enabled: false
+
+# Enable development debugging features
+podDisruptionBudget:
+  enabled: false
+
+networkPolicy:
+  enabled: false

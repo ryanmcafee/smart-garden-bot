@@ -1,0 +1,419 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smart-garden-bot
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/part-of: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: "CreateNamespace=true"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Source configuration
+  source:
+    repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+    targetRevision: HEAD
+    path: src/infrastructure/helm/smart-garden-bot
+    
+    # Helm configuration
+    helm:
+      # Use values file from the repository
+      valueFiles:
+        - values.yaml
+        - values-production.yaml
+      
+      # Override specific values for production
+      parameters:
+        - name: webapp.replicaCount
+          value: "3"
+        - name: apiserver.replicaCount
+          value: "5"
+        - name: operator.replicaCount
+          value: "1"
+        - name: webapp.autoscaling.enabled
+          value: "true"
+        - name: apiserver.autoscaling.enabled
+          value: "true"
+        - name: monitoring.enabled
+          value: "true"
+        - name: networkPolicy.enabled
+          value: "true"
+        - name: podDisruptionBudget.enabled
+          value: "true"
+        - name: cloudnative-pg.enabled
+          value: "true"
+        - name: postgresql.enabled
+          value: "false"
+        - name: redis.enabled
+          value: "true"
+        - name: redis.replica.replicaCount
+          value: "3"
+        
+      # Image tag override (updated by CI/CD pipeline)
+      values: |
+        webapp:
+          image:
+            tag: "v1.0.0"
+        apiserver:
+          image:
+            tag: "v1.0.0"
+        operator:
+          image:
+            tag: "v1.0.0"
+
+  # Destination configuration
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: smart-garden-bot
+
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Revision history limit
+  revisionHistoryLimit: 10
+
+  # Health check configuration
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /spec/targetCPUUtilizationPercentage
+        - /spec/targetMemoryUtilizationPercentage
+
+---
+# Application for monitoring stack
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smart-garden-bot-monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: smart-garden-bot-monitoring
+    app.kubernetes.io/part-of: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: "55.5.0"
+    
+    helm:
+      values: |
+        prometheus:
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            retention: 30d
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: fast-ssd
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 50Gi
+            
+            additionalScrapeConfigs:
+              - job_name: 'smart-garden-bot-api'
+                static_configs:
+                  - targets: ['smart-garden-bot-apiserver.smart-garden-bot.svc.cluster.local:8080']
+                metrics_path: /metrics
+                scrape_interval: 30s
+              
+              - job_name: 'smart-garden-bot-operator'
+                static_configs:
+                  - targets: ['smart-garden-bot-operator.smart-garden-bot.svc.cluster.local:8080']
+                metrics_path: /metrics
+                scrape_interval: 30s
+
+        grafana:
+          adminPassword: "admin123"
+          persistence:
+            enabled: true
+            storageClassName: standard
+            size: 10Gi
+          
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+              label: grafana_dashboard
+              
+          dashboardProviders:
+            dashboardproviders.yaml:
+              apiVersion: 1
+              providers:
+              - name: 'smart-garden-bot'
+                orgId: 1
+                folder: 'Smart Garden Bot'
+                type: file
+                disableDeletion: false
+                editable: true
+                options:
+                  path: /var/lib/grafana/dashboards/smart-garden-bot
+
+        alertmanager:
+          alertmanagerSpec:
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: standard
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 10Gi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+---
+# Application for external secrets operator
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-operator
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: external-secrets-operator
+    app.kubernetes.io/part-of: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://charts.external-secrets.io
+    chart: external-secrets
+    targetRevision: "0.9.11"
+    
+    helm:
+      values: |
+        installCRDs: true
+        replicaCount: 2
+        
+        webhook:
+          replicaCount: 2
+        
+        certController:
+          replicaCount: 2
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - Replace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        maxDuration: 3m
+
+---
+# AppProject for Smart Garden Bot applications
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: smart-garden-bot-project
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: smart-garden-bot-project
+    app.kubernetes.io/part-of: smart-garden-bot
+spec:
+  description: Smart Garden Bot Application Project
+  
+  # Source repositories
+  sourceRepos:
+    - 'https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot'
+    - 'https://charts.bitnami.com/bitnami'
+    - 'https://cloudnative-pg.github.io/charts'
+    - 'https://prometheus-community.github.io/helm-charts'
+    - 'https://charts.external-secrets.io'
+  
+  # Destination clusters and namespaces
+  destinations:
+    - namespace: smart-garden-bot
+      server: https://kubernetes.default.svc
+    - namespace: smart-garden-bot-*
+      server: https://kubernetes.default.svc
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+    - namespace: external-secrets-system
+      server: https://kubernetes.default.svc
+  
+  # RBAC policies
+  roles:
+    - name: admin
+      description: Admin privileges for Smart Garden Bot project
+      policies:
+        - p, proj:smart-garden-bot-project:admin, applications, *, smart-garden-bot-project/*, allow
+        - p, proj:smart-garden-bot-project:admin, repositories, *, *, allow
+        - p, proj:smart-garden-bot-project:admin, certificates, *, *, allow
+      groups:
+        - smart-garden-bot:admins
+    
+    - name: developer
+      description: Developer privileges for Smart Garden Bot project
+      policies:
+        - p, proj:smart-garden-bot-project:developer, applications, get, smart-garden-bot-project/*, allow
+        - p, proj:smart-garden-bot-project:developer, applications, sync, smart-garden-bot-project/*, allow
+        - p, proj:smart-garden-bot-project:developer, applications, action/*, smart-garden-bot-project/*, allow
+        - p, proj:smart-garden-bot-project:developer, repositories, get, *, allow
+      groups:
+        - smart-garden-bot:developers
+
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: admissionregistration.k8s.io
+      kind: MutatingAdmissionWebhook
+    - group: admissionregistration.k8s.io
+      kind: ValidatingAdmissionWebhook
+
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: '*'
+    - group: apps
+      kind: '*'
+    - group: extensions
+      kind: '*'
+    - group: networking.k8s.io
+      kind: '*'
+    - group: autoscaling
+      kind: '*'
+    - group: policy
+      kind: '*'
+    - group: monitoring.coreos.com
+      kind: '*'
+    - group: external-secrets.io
+      kind: '*'
+    - group: postgresql.cnpg.io
+      kind: '*'
+    - group: garden.smartbot.io
+      kind: '*'
+
+  # Orphaned resources monitoring
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ''
+        kind: Secret
+        name: '*-token-*'
+      - group: ''
+        kind: ConfigMap
+        name: 'kube-root-ca.crt'
+
+---
+# ApplicationSet for multiple environments
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: smart-garden-bot-environments
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: smart-garden-bot-environments
+    app.kubernetes.io/part-of: smart-garden-bot
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            environment: staging
+        values:
+          revision: develop
+          valuesFile: values-staging.yaml
+          replicas: "2"
+    - clusters:
+        selector:
+          matchLabels:
+            environment: production
+        values:
+          revision: main
+          valuesFile: values-production.yaml
+          replicas: "3"
+
+  template:
+    metadata:
+      name: 'smart-garden-bot-{{name}}'
+      labels:
+        app.kubernetes.io/name: smart-garden-bot
+        app.kubernetes.io/part-of: smart-garden-bot
+        environment: '{{metadata.labels.environment}}'
+    spec:
+      project: smart-garden-bot-project
+      source:
+        repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+        targetRevision: '{{values.revision}}'
+        path: src/infrastructure/helm/smart-garden-bot
+        helm:
+          valueFiles:
+            - values.yaml
+            - '{{values.valuesFile}}'
+          parameters:
+            - name: webapp.replicaCount
+              value: '{{values.replicas}}'
+            - name: apiserver.replicaCount
+              value: '{{values.replicas}}'
+      destination:
+        server: '{{server}}'
+        namespace: smart-garden-bot
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,0 +1,165 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smart-garden-bot
+  labels:
+    name: smart-garden-bot
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/part-of: smart-garden-bot
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Smart Garden Bot - Intelligent garden irrigation automation platform"
+---
+# Network policy to isolate the namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow ingress from nginx-ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-nginx
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: webapp
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              name: nginx-ingress
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# Allow API server ingress from nginx-ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apiserver-ingress
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: apiserver
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              name: nginx-ingress
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow internal communication between components
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-communication
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: smart-garden-bot
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: smart-garden-bot
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: smart-garden-bot
+---
+# Allow egress to external services (DNS, weather APIs, etc.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: smart-garden-bot
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow HTTPS traffic to external APIs
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow HTTP traffic (for some APIs that don't use HTTPS)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 80
+---
+# Allow monitoring namespace to scrape metrics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: smart-garden-bot
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080 # Metrics port

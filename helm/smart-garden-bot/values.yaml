@@ -1,0 +1,456 @@
+# Default values for smart-garden-bot
+# This is a YAML-formatted file.
+
+global:
+  # -- Global image registry
+  imageRegistry: ""
+  # -- Global image pull secrets
+  imagePullSecrets: []
+  # -- Global storage class
+  storageClass: ""
+  # -- Global timezone
+  timezone: "UTC"
+
+# -- String to partially override fullname template (will maintain the release name)
+nameOverride: ""
+# -- String to fully override fullname template
+fullnameOverride: ""
+
+# Web Application Configuration
+webApp:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: ghcr.io
+    repository: smart-garden-bot/web-app
+    tag: "latest"
+    pullPolicy: IfNotPresent
+    
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+    
+  podAnnotations: {}
+  podSecurityContext:
+    fsGroup: 1001
+    runAsNonRoot: true
+    runAsUser: 1001
+    
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1001
+    
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 500m
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+    annotations: {}
+    
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  env:
+    # NextJS configuration
+    NODE_ENV: production
+    NEXT_TELEMETRY_DISABLED: "1"
+    # API configuration
+    API_BASE_URL: "http://smart-garden-bot-api:8080/api/v1"
+    # Auth configuration (will be set via secrets)
+    AUTH0_DOMAIN: ""
+    AUTH0_CLIENT_ID: ""
+    
+  # Additional environment variables from secrets/configmaps
+  envFrom: []
+  
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    
+  readinessProbe:
+    httpGet:
+      path: /api/ready
+      port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# API Server Configuration
+apiServer:
+  enabled: true
+  replicaCount: 3
+  
+  image:
+    registry: ghcr.io
+    repository: smart-garden-bot/api
+    tag: "latest"
+    pullPolicy: IfNotPresent
+    
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: "smart-garden-bot-api"
+    
+  podAnnotations: {}
+  podSecurityContext:
+    fsGroup: 1001
+    runAsNonRoot: true
+    runAsUser: 1001
+    
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1001
+    
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+    requests:
+      memory: 512Mi
+      cpu: 500m
+      
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+    annotations: {}
+    
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  env:
+    # Server configuration
+    PORT: "8080"
+    GIN_MODE: "release"
+    LOG_LEVEL: "info"
+    # Database configuration (will be set via secrets)
+    DATABASE_URL: ""
+    # Auth configuration
+    AUTH0_DOMAIN: ""
+    AUTH0_AUDIENCE: ""
+    # Weather API configuration
+    WEATHER_PROVIDERS: "openweather,noaa,weatherapi,openmeteo"
+    # Redis configuration
+    REDIS_URL: ""
+    
+  envFrom: []
+  
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Kubernetes Operator Configuration
+operator:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: ghcr.io
+    repository: smart-garden-bot/operator
+    tag: "latest" 
+    pullPolicy: IfNotPresent
+    
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: "smart-garden-bot-operator"
+    
+  podAnnotations: {}
+  podSecurityContext:
+    fsGroup: 1001
+    runAsNonRoot: true
+    runAsUser: 1001
+    
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1001
+    
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 500m
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  env:
+    # Operator configuration
+    LEADER_ELECTION: "true"
+    LOG_LEVEL: "info"
+    METRICS_ADDR: ":8080"
+    PROBE_ADDR: ":8081"
+    # Kubernetes configuration
+    NAMESPACE: "smart-garden-bot"
+    # Weather API configuration
+    WEATHER_PROVIDERS: "openweather,noaa,weatherapi,openmeteo"
+    
+  envFrom: []
+  
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# PostgreSQL Configuration
+postgresql:
+  enabled: true
+  auth:
+    enablePostgresUser: true
+    postgresPassword: ""
+    username: "smartgarden"
+    password: ""
+    database: "smartgarden"
+  architecture: replication
+  primary:
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: ""
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 1000m
+    initdb:
+      scripts:
+        01-extensions.sql: |
+          CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+          CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+          CREATE EXTENSION IF NOT EXISTS "vector";
+          CREATE EXTENSION IF NOT EXISTS "timescaledb" CASCADE;
+        02-schemas.sql: |
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE SCHEMA IF NOT EXISTS gardens;
+          CREATE SCHEMA IF NOT EXISTS sensors;
+          CREATE SCHEMA IF NOT EXISTS billing;
+          CREATE SCHEMA IF NOT EXISTS analytics;
+  readReplicas:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 100Gi
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Redis Configuration  
+redis:
+  enabled: true
+  architecture: replication
+  auth:
+    enabled: true
+    password: ""
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 125m
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: app.smartgardenbot.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: smart-garden-bot-web
+            port: 3000
+    - host: api.smartgardenbot.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: smart-garden-bot-api
+            port: 8080
+  tls:
+    - secretName: smartgardenbot-tls
+      hosts:
+        - app.smartgardenbot.io
+        - api.smartgardenbot.io
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: ""
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+
+# Network Policies
+networkPolicy:
+  enabled: true
+  ingress:
+    enabled: true
+  egress:
+    enabled: true
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Secrets Configuration
+secrets:
+  # Database secrets
+  database:
+    enabled: true
+    name: "smart-garden-bot-db-secret"
+    data: {}
+  # Auth0 secrets
+  auth:
+    enabled: true
+    name: "smart-garden-bot-auth-secret"
+    data: {}
+  # Weather API secrets
+  weather:
+    enabled: true
+    name: "smart-garden-bot-weather-secret"
+    data: {}
+  # Stripe secrets
+  stripe:
+    enabled: true
+    name: "smart-garden-bot-stripe-secret"
+    data: {}
+
+# ConfigMaps
+configMaps:
+  app:
+    enabled: true
+    name: "smart-garden-bot-config"
+    data:
+      timezone: "UTC"
+      log_level: "info"
+
+# Monitoring Configuration
+monitoring:
+  prometheus:
+    enabled: false  # Managed by kube-prometheus-stack dependency
+  grafana:
+    enabled: false  # Managed by grafana dependency
+  loki:
+    enabled: false  # Managed by loki-stack dependency
+    
+# Cert Manager
+certManager:
+  enabled: false  # Should be installed cluster-wide
+
+# Istio Service Mesh
+istio:
+  enabled: false
+  gateway:
+    enabled: false
+    hosts:
+      - app.smartgardenbot.io
+      - api.smartgardenbot.io
+  virtualService:
+    enabled: false
+  peerAuthentication:
+    enabled: false
+    mtls: STRICT
+
+# Backup Configuration
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: "30d"

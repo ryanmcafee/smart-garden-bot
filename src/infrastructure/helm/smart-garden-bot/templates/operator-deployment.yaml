@@ -1,0 +1,179 @@
+{{- if .Values.operator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-operator
+  labels:
+    {{- include "smart-garden-bot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+    control-plane: controller-manager
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.operator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "smart-garden-bot.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: operator
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.operator.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "smart-garden-bot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+        control-plane: controller-manager
+        {{- with .Values.operator.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.operator.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smart-garden-bot.operatorServiceAccountName" . }}
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        {{- toYaml .Values.operator.podSecurityContext | nindent 8 }}
+      containers:
+        - name: manager
+          securityContext:
+            {{- toYaml .Values.operator.securityContext | nindent 12 }}
+          image: "{{ .Values.operator.image.registry }}/{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          args:
+            - --leader-elect
+            {{- range $key, $value := .Values.operator.env }}
+            - --{{ $key | lower | replace "_" "-" }}={{ $value }}
+            {{- end }}
+          command:
+            - /manager
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            - containerPort: 8081
+              name: health
+              protocol: TCP
+            - containerPort: 9443
+              name: webhook-server
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.operator.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            # Add pod information for better observability
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OPERATOR_NAME
+              value: "{{ include "smart-garden-bot.fullname" . }}-operator"
+          {{- with .Values.operator.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.operator.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.operator.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+          volumeMounts:
+            - mountPath: /tmp/k8s-webhook-server/serving-certs
+              name: cert
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: cert
+          secret:
+            defaultMode: 420
+            secretName: {{ include "smart-garden-bot.fullname" . }}-operator-webhook-server-cert
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+# Webhook Configuration
+{{- if .Values.operator.webhooks.enabled | default true }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionWebhook
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-operator-mutating-webhook-configuration
+  labels:
+    {{- include "smart-garden-bot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "smart-garden-bot.fullname" . }}-operator-webhook-service
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-garden-smartbot-io-v1-gardencontroller
+    failurePolicy: Fail
+    name: mgardencontroller.kb.io
+    rules:
+      - apiGroups:
+          - garden.smartbot.io
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - gardencontrollers
+    sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionWebhook
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-operator-validating-webhook-configuration
+  labels:
+    {{- include "smart-garden-bot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "smart-garden-bot.fullname" . }}-operator-webhook-service
+        namespace: {{ .Release.Namespace }}
+        path: /validate-garden-smartbot-io-v1-gardencontroller
+    failurePolicy: Fail
+    name: vgardencontroller.kb.io
+    rules:
+      - apiGroups:
+          - garden.smartbot.io
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - gardencontrollers
+    sideEffects: None
+{{- end }}
+{{- end }}

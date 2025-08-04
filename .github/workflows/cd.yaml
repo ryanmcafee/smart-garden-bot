@@ -1,0 +1,350 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types:
+      - completed
+    branches:
+      - main
+      - develop
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_PREFIX: smart-garden-bot
+  HELM_REPO_URL: https://smart-garden-bot.github.io/helm-charts
+
+jobs:
+  # Determine deployment environment and images
+  setup:
+    name: Setup Deployment
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+      deploy: ${{ steps.deploy.outputs.deploy }}
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=development" >> $GITHUB_OUTPUT
+          else
+            echo "environment=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "image_tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "image_tag=latest" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "image_tag=develop-latest" >> $GITHUB_OUTPUT
+          else
+            echo "image_tag=sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Should deploy
+        id: deploy
+        run: |
+          if [[ "${{ steps.env.outputs.environment }}" != "none" ]]; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Build and push final container images
+  build-images:
+    name: Build Release Images
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.deploy == 'true'
+    strategy:
+      matrix:
+        component: [web-app, api, operator]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/${{ matrix.component }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.setup.outputs.image_tag }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/${{ matrix.component }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            VERSION=${{ needs.setup.outputs.image_tag }}
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.date }}
+
+      - name: Sign container images with cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.2.0'
+
+      - name: Sign the published Docker image
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}/${{ matrix.component }}:${{ needs.setup.outputs.image_tag }}
+
+  # Package and publish Helm chart
+  publish-helm:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: [setup, build-images]
+    if: needs.setup.outputs.deploy == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Update Chart version
+        run: |
+          # Update Chart.yaml with new version
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            sed -i "s/version: .*/version: $VERSION/" helm/smart-garden-bot/Chart.yaml
+            sed -i "s/appVersion: .*/appVersion: $VERSION/" helm/smart-garden-bot/Chart.yaml
+          fi
+
+      - name: Package Helm chart
+        run: |
+          helm dependency update helm/smart-garden-bot
+          helm package helm/smart-garden-bot --destination .helm-releases
+
+      - name: Checkout helm-charts repository
+        uses: actions/checkout@v4
+        with:
+          repository: smart-garden-bot/helm-charts
+          token: ${{ secrets.HELM_CHARTS_TOKEN }}
+          path: helm-charts
+
+      - name: Update Helm repository
+        run: |
+          cp .helm-releases/*.tgz helm-charts/
+          cd helm-charts
+          helm repo index . --url ${{ env.HELM_REPO_URL }}
+          git add .
+          git commit -m "Release smart-garden-bot chart version ${{ needs.setup.outputs.image_tag }}"
+          git push
+
+  # Deploy to development environment
+  deploy-development:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [setup, build-images, publish-helm]
+    if: needs.setup.outputs.environment == 'development'
+    environment:
+      name: development
+      url: https://dev.app.smartgardenbot.io
+    steps:
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: smart-garden-bot/gitops
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+
+      - name: Update development deployment
+        run: |
+          cd gitops
+          # Update image tags in the development ArgoCD application
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "webApp.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "apiServer.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "operator.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add applications/smart-garden-bot-development.yaml
+          git commit -m "Deploy smart-garden-bot ${{ needs.setup.outputs.image_tag }} to development"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "Deployment triggered via GitOps. Check ArgoCD for sync status."
+          echo "Development URL: https://dev.app.smartgardenbot.io"
+
+  # Deploy to production environment (manual approval required)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [setup, build-images, publish-helm]
+    if: needs.setup.outputs.environment == 'production'
+    environment:
+      name: production
+      url: https://app.smartgardenbot.io
+    steps:
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: smart-garden-bot/gitops
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+
+      - name: Create production deployment PR
+        run: |
+          cd gitops
+          
+          # Create a new branch for the production deployment
+          BRANCH_NAME="deploy-production-${{ needs.setup.outputs.image_tag }}"
+          git checkout -b $BRANCH_NAME
+          
+          # Update image tags in the production ArgoCD application
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "webApp.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "apiServer.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "operator.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add applications/smart-garden-bot-production.yaml
+          git commit -m "Deploy smart-garden-bot ${{ needs.setup.outputs.image_tag }} to production"
+          git push origin $BRANCH_NAME
+          
+          # Create PR
+          gh pr create \
+            --title "Deploy smart-garden-bot ${{ needs.setup.outputs.image_tag }} to production" \
+            --body "This PR deploys smart-garden-bot version ${{ needs.setup.outputs.image_tag }} to production.
+
+          ## Changes
+          - Web App: \`${{ needs.setup.outputs.image_tag }}\`
+          - API Server: \`${{ needs.setup.outputs.image_tag }}\`
+          - Operator: \`${{ needs.setup.outputs.image_tag }}\`
+
+          ## Deployment Checklist
+          - [ ] Security scan passed
+          - [ ] Integration tests passed
+          - [ ] Manual testing completed
+          - [ ] Database migrations reviewed
+          - [ ] Monitoring alerts configured
+          - [ ] Rollback plan ready
+
+          Auto-deployment will occur upon PR merge." \
+            --base main \
+            --head $BRANCH_NAME
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+
+  # Run smoke tests after deployment
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-development]
+    if: needs.setup.outputs.environment == 'development'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for deployment to be ready..."
+          sleep 60  # Wait for pods to start
+
+      - name: Run smoke tests
+        run: |
+          # Health check endpoints
+          curl -f https://dev.api.smartgardenbot.io/health || exit 1
+          curl -f https://dev.api.smartgardenbot.io/ready || exit 1
+          
+          # Basic API functionality
+          curl -f https://dev.api.smartgardenbot.io/api/v1/openapi.json || exit 1
+          
+          echo "✅ Smoke tests passed"
+
+  # Security scanning of deployed application
+  runtime-security:
+    name: Runtime Security Scan
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-development]
+    if: needs.setup.outputs.environment == 'development'
+    steps:
+      - name: Run OWASP ZAP scan
+        uses: zaproxy/action-full-scan@v0.7.0
+        with:
+          target: 'https://dev.app.smartgardenbot.io'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+
+  # Notify deployment status
+  notify-deployment:
+    name: Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-development, deploy-production, smoke-tests]
+    if: always() && (needs.deploy-development.result != 'skipped' || needs.deploy-production.result != 'skipped')
+    steps:
+      - name: Notify Slack on successful deployment
+        if: needs.deploy-development.result == 'success' || needs.deploy-production.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#smart-garden-bot'
+          message: |
+            🚀 Deployment Successful
+            Environment: ${{ needs.setup.outputs.environment }}
+            Version: ${{ needs.setup.outputs.image_tag }}
+            ${{ needs.setup.outputs.environment == 'development' && 'URL: https://dev.app.smartgardenbot.io' || 'URL: https://app.smartgardenbot.io' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on failed deployment
+        if: needs.deploy-development.result == 'failure' || needs.deploy-production.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#smart-garden-bot'
+          message: |
+            ❌ Deployment Failed
+            Environment: ${{ needs.setup.outputs.environment }}
+            Version: ${{ needs.setup.outputs.image_tag }}
+            Check logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

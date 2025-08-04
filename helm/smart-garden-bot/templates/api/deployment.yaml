@@ -1,0 +1,130 @@
+{{- if .Values.apiServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "smart-garden-bot.labels.api" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  {{- if not .Values.apiServer.autoscaling.enabled }}
+  replicas: {{ .Values.apiServer.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "smart-garden-bot.selectorLabels.api" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        {{- with .Values.apiServer.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "smart-garden-bot.selectorLabels.api" . | nindent 8 }}
+        version: {{ .Values.apiServer.image.tag | default .Chart.AppVersion }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smart-garden-bot.serviceAccountName.api" . }}
+      securityContext:
+        {{- toYaml .Values.apiServer.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: db-migration
+          image: "{{ .Values.apiServer.image.registry }}/{{ .Values.apiServer.image.repository }}:{{ .Values.apiServer.image.tag | default .Chart.AppVersion }}"
+          command: ["/app/migrate"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.name }}
+                  key: database-url
+          securityContext:
+            {{- toYaml .Values.apiServer.securityContext | nindent 12 }}
+      containers:
+        - name: api
+          securityContext:
+            {{- toYaml .Values.apiServer.securityContext | nindent 12 }}
+          image: "{{ .Values.apiServer.image.registry }}/{{ .Values.apiServer.image.repository }}:{{ .Values.apiServer.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.apiServer.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.apiServer.service.targetPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.apiServer.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.name }}
+                  key: database-url
+            - name: AUTH0_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.auth.name }}
+                  key: auth0-client-secret
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smart-garden-bot.redis.secretName" . }}
+                  key: {{ include "smart-garden-bot.redis.secretPasswordKey" . }}
+            - name: OPENWEATHER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.weather.name }}
+                  key: openweather-api-key
+            - name: WEATHERAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.weather.name }}
+                  key: weatherapi-key
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.stripe.name }}
+                  key: stripe-secret-key
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.stripe.name }}
+                  key: stripe-webhook-secret
+          {{- with .Values.apiServer.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.apiServer.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.apiServer.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.apiServer.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.apiServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.apiServer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.apiServer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,204 @@
+name: Helm Chart Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'helm/smart-garden-bot/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'helm/smart-garden-bot/**'
+
+env:
+  HELM_REPO_URL: https://smart-garden-bot.github.io/helm-charts
+
+jobs:
+  lint-test:
+    name: Lint and Test Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo update
+
+      - name: Run chart-testing (lint)
+        run: ct lint --target-branch ${{ github.event.repository.default_branch }} --chart-dirs helm
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.8.0
+        if: github.event_name == 'pull_request'
+
+      - name: Install cert-manager (for testing)
+        if: github.event_name == 'pull_request'
+        run: |
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+          kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=300s
+
+      - name: Run chart-testing (install)
+        if: github.event_name == 'pull_request'
+        run: |
+          ct install --target-branch ${{ github.event.repository.default_branch }} \
+            --chart-dirs helm \
+            --helm-extra-set-args="--set=postgresql.enabled=false --set=redis.enabled=false --set=ingress.enabled=false"
+
+  security-scan:
+    name: Security Scan Helm Chart  
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Template Helm chart
+        run: |
+          helm template smart-garden-bot helm/smart-garden-bot \
+            --values helm/smart-garden-bot/values-production.yaml > /tmp/manifests.yaml
+
+      - name: Run Polaris security scan
+        run: |
+          wget https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz
+          tar -xzf polaris_linux_amd64.tar.gz
+          sudo mv polaris /usr/local/bin
+          polaris audit --audit-path /tmp/manifests.yaml --format json > polaris-results.json
+
+      - name: Upload Polaris results
+        uses: actions/upload-artifact@v3
+        with:
+          name: polaris-helm-results
+          path: polaris-results.json
+
+      - name: Run Checkov security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          file: /tmp/manifests.yaml
+          framework: kubernetes
+          output_format: json
+          output_file_path: checkov-results.json
+
+      - name: Upload Checkov results
+        uses: actions/upload-artifact@v3
+        with:
+          name: checkov-helm-results  
+          path: checkov-results.json
+
+  release:
+    name: Release Helm Chart
+    runs-on: ubuntu-latest
+    needs: [lint-test, security-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo update
+
+      - name: Update dependencies
+        run: helm dependency update helm/smart-garden-bot
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p .helm-releases
+          helm package helm/smart-garden-bot --destination .helm-releases
+
+      - name: Checkout helm-charts repository
+        uses: actions/checkout@v4
+        with:
+          repository: smart-garden-bot/helm-charts
+          token: ${{ secrets.HELM_CHARTS_TOKEN }}
+          path: helm-charts
+
+      - name: Update Helm repository
+        run: |
+          cp .helm-releases/*.tgz helm-charts/
+          cd helm-charts
+          helm repo index . --url ${{ env.HELM_REPO_URL }}
+          
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update smart-garden-bot Helm chart"
+            git push
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: .helm-releases/*.tgz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Notify Helm Release
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Notify Slack on successful release
+        if: needs.release.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#smart-garden-bot'
+          message: |
+            📦 Helm Chart Released
+            Repository: ${{ env.HELM_REPO_URL }}
+            Commit: ${{ github.sha }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on failed release
+        if: needs.release.result == 'failure'  
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#smart-garden-bot'
+          message: |
+            ❌ Helm Chart Release Failed
+            Check logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

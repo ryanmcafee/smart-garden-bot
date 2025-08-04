@@ -1,0 +1,98 @@
+{{- if .Values.webapp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-webapp
+  labels:
+    {{- include "smart-garden-bot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webapp
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.webapp.autoscaling.enabled }}
+  replicas: {{ .Values.webapp.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "smart-garden-bot.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webapp
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/webapp-configmap.yaml") . | sha256sum }}
+        {{- with .Values.webapp.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "smart-garden-bot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webapp
+        {{- with .Values.webapp.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.webapp.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smart-garden-bot.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.webapp.podSecurityContext | nindent 8 }}
+      containers:
+        - name: webapp
+          securityContext:
+            {{- toYaml .Values.webapp.securityContext | nindent 12 }}
+          image: "{{ .Values.webapp.image.registry }}/{{ .Values.webapp.image.repository }}:{{ .Values.webapp.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.webapp.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.webapp.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.webapp.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- with .Values.webapp.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.webapp.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.webapp.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.webapp.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: public-uploads
+              mountPath: /app/public/uploads
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: next-cache
+          emptyDir: {}
+        - name: public-uploads
+          {{- if .Values.persistence.temp.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "smart-garden-bot.fullname" . }}-webapp-uploads
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.webapp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

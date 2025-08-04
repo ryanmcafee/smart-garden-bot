@@ -1,0 +1,305 @@
+# Production environment overrides
+global:
+  imageRegistry: "ghcr.io"
+  timezone: "UTC"
+
+webApp:
+  replicaCount: 3
+  image:
+    tag: "v0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 500m
+    requests:
+      memory: 512Mi
+      cpu: 250m
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  env:
+    NODE_ENV: production
+    NEXT_TELEMETRY_DISABLED: "1"
+    API_BASE_URL: "https://api.smartgardenbot.io/api/v1"
+    AUTH0_DOMAIN: "smartgarden.auth0.com"
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - web
+          topologyKey: kubernetes.io/hostname
+    
+apiServer:
+  replicaCount: 5
+  image:
+    tag: "v0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+    requests:
+      memory: 1Gi
+      cpu: 500m
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  env:
+    GIN_MODE: "release"
+    LOG_LEVEL: "info"
+    AUTH0_DOMAIN: "smartgarden.auth0.com"
+    AUTH0_AUDIENCE: "https://api.smartgardenbot.io"
+    WEATHER_PROVIDERS: "openweather,noaa,weatherapi,openmeteo"
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - api
+          topologyKey: kubernetes.io/hostname
+    
+operator:
+  replicaCount: 2  # Active-passive setup
+  image:
+    tag: "v0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: 500m
+    requests:
+      memory: 512Mi
+      cpu: 250m
+  env:
+    LOG_LEVEL: "info"
+    LEADER_ELECTION: "true"
+    WEATHER_PROVIDERS: "openweather,noaa,weatherapi,openmeteo"
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - operator
+          topologyKey: kubernetes.io/hostname
+
+# Production PostgreSQL with high availability
+postgresql:
+  enabled: true
+  architecture: replication
+  auth:
+    enablePostgresUser: true
+    # These will be injected by external secret management
+    postgresPassword: ""
+    username: "smartgarden"
+    password: ""
+    database: "smartgarden"
+  primary:
+    persistence:
+      enabled: true
+      size: 500Gi
+      storageClass: "gp3"
+    resources:
+      requests:
+        memory: 8Gi
+        cpu: 4000m
+      limits:
+        memory: 16Gi
+        cpu: 8000m
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - primary
+            topologyKey: kubernetes.io/hostname
+  readReplicas:
+    replicaCount: 3
+    persistence:
+      enabled: true
+      size: 500Gi
+      storageClass: "gp3"
+    resources:
+      requests:
+        memory: 4Gi
+        cpu: 2000m
+      limits:
+        memory: 8Gi
+        cpu: 4000m
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - read
+            topologyKey: kubernetes.io/hostname
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+
+# Production Redis with high availability
+redis:
+  enabled: true
+  architecture: replication
+  auth:
+    enabled: true
+    # This will be injected by external secret management
+    password: ""
+  master:
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: "gp3"
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 1000m
+      limits:
+        memory: 4Gi
+        cpu: 2000m
+  replica:
+    replicaCount: 3
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: "gp3"
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - replica
+            topologyKey: kubernetes.io/hostname
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    external-dns.alpha.kubernetes.io/hostname: "app.smartgardenbot.io,api.smartgardenbot.io"
+  hosts:
+    - host: app.smartgardenbot.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: smart-garden-bot-web
+            port: 3000
+    - host: api.smartgardenbot.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: smart-garden-bot-api
+            port: 8080
+  tls:
+    - secretName: smartgardenbot-prod-tls
+      hosts:
+        - app.smartgardenbot.io
+        - api.smartgardenbot.io
+
+# Production monitoring
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 15s
+  scrapeTimeout: 10s
+
+# Production security
+networkPolicy:
+  enabled: true
+  ingress:
+    enabled: true
+  egress:
+    enabled: true
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Enable Istio service mesh for production
+istio:
+  enabled: true
+  gateway:
+    enabled: true
+    hosts:
+      - app.smartgardenbot.io
+      - api.smartgardenbot.io
+  virtualService:
+    enabled: true
+  peerAuthentication:
+    enabled: true
+    mtls: STRICT
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: "30d"
+
+# Production secrets (managed externally via sealed-secrets or external-secrets)
+secrets:
+  database:
+    data: {}  # Managed externally
+  auth:
+    data: {}  # Managed externally
+  weather:
+    data: {}  # Managed externally
+  stripe:
+    data: {}  # Managed externally

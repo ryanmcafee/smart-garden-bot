@@ -1,0 +1,305 @@
+---
+# ServiceMonitor for API Server
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: smart-garden-bot-api
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: api
+    release: prometheus
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smart-garden-bot
+      app.kubernetes.io/component: api
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true
+
+---
+# ServiceMonitor for Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: smart-garden-bot-operator
+  namespace: smart-garden-bot-system
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    app.kubernetes.io/component: operator
+    release: prometheus
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smart-garden-bot
+      app.kubernetes.io/component: operator
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true
+
+---
+# PrometheusRule for Smart Garden Bot alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: smart-garden-bot-alerts
+  namespace: smart-garden-bot
+  labels:
+    app.kubernetes.io/name: smart-garden-bot
+    release: prometheus
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  groups:
+  - name: smart-garden-bot.rules
+    interval: 30s
+    rules:
+    # API Server alerts
+    - alert: APIServerDown
+      expr: up{job="smart-garden-bot-api"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        service: api
+      annotations:
+        summary: "Smart Garden Bot API Server is down"
+        description: "API Server has been down for more than 5 minutes"
+        runbook_url: "https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot/blob/main/docs/runbooks/api-down.md"
+
+    - alert: APIServerHighLatency
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="smart-garden-bot-api"}[5m])) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+      annotations:
+        summary: "Smart Garden Bot API Server high latency"
+        description: "95th percentile latency is above 500ms for 5 minutes"
+
+    - alert: APIServerHighErrorRate
+      expr: rate(http_requests_total{job="smart-garden-bot-api",status=~"5.."}[5m]) / rate(http_requests_total{job="smart-garden-bot-api"}[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+      annotations:
+        summary: "Smart Garden Bot API Server high error rate"
+        description: "Error rate is above 5% for 5 minutes"
+
+    # Database alerts
+    - alert: PostgreSQLDown
+      expr: up{job="postgres-exporter"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: database
+      annotations:
+        summary: "PostgreSQL database is down"
+        description: "PostgreSQL has been down for more than 2 minutes"
+
+    - alert: PostgreSQLHighConnections
+      expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: database
+      annotations:
+        summary: "PostgreSQL high connection usage"
+        description: "Connection usage is above 80%"
+
+    - alert: PostgreSQLSlowQueries
+      expr: pg_stat_activity_max_tx_duration{datname="smartgarden"} > 300
+      for: 2m
+      labels:
+        severity: warning
+        service: database
+      annotations:
+        summary: "PostgreSQL slow queries detected"
+        description: "Long running queries detected (>5 minutes)"
+
+    # Operator alerts
+    - alert: OperatorDown
+      expr: up{job="smart-garden-bot-operator"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        service: operator
+      annotations:
+        summary: "Smart Garden Bot Operator is down"
+        description: "Operator has been down for more than 5 minutes"
+
+    - alert: OperatorReconcileErrors
+      expr: increase(controller_runtime_reconcile_errors_total{controller="gardencontroller"}[5m]) > 5
+      for: 2m
+      labels:
+        severity: warning
+        service: operator
+      annotations:
+        summary: "Operator reconcile errors"
+        description: "High number of reconcile errors in the last 5 minutes"
+
+    # Business logic alerts
+    - alert: WeatherAPIFailures
+      expr: increase(weather_api_requests_total{status="error"}[15m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+        service: weather-integration
+      annotations:
+        summary: "Weather API integration failures"
+        description: "Multiple weather API failures detected"
+
+    - alert: WateringSystemFailures
+      expr: increase(watering_events_total{success="false"}[1h]) > 5
+      for: 5m
+      labels:
+        severity: critical
+        service: watering-system
+      annotations:
+        summary: "Watering system failures"
+        description: "Multiple watering system failures detected"
+
+    - alert: HighMemoryUsage
+      expr: container_memory_usage_bytes{container!="POD",container!=""} / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage"
+        description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is using more than 90% of its memory limit"
+
+    - alert: HighCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{container!="POD",container!=""}[5m]) / container_spec_cpu_quota * container_spec_cpu_period > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage"
+        description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is using more than 90% of its CPU limit"
+
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smart-garden-bot-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+data:
+  smart-garden-bot-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Smart Garden Bot Overview",
+        "tags": ["smart-garden-bot"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "API Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{job=\"smart-garden-bot-api\"}[5m])",
+                "legendFormat": "{{method}} {{endpoint}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "API Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"smart-garden-bot-api\"}[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"smart-garden-bot-api\"}[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Active Gardens",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "gardens_registered_total",
+                "legendFormat": "Gardens"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Watering Events",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(watering_events_total[5m])",
+                "legendFormat": "{{zone}} - {{success}}"
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "title": "Database Connections",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_activity_count",
+                "legendFormat": "Active connections"
+              },
+              {
+                "expr": "pg_settings_max_connections",
+                "legendFormat": "Max connections"
+              }
+            ]
+          },
+          {
+            "id": 6,
+            "title": "Pod Resource Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total{pod=~\"smart-garden-bot.*\"}[5m])",
+                "legendFormat": "{{pod}} CPU"
+              },
+              {
+                "expr": "container_memory_usage_bytes{pod=~\"smart-garden-bot.*\"} / 1024 / 1024",
+                "legendFormat": "{{pod}} Memory (MB)"
+              }
+            ]
+          }
+        ]
+      }
+    }

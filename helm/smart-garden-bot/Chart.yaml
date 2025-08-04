@@ -1,0 +1,47 @@
+apiVersion: v2
+name: smart-garden-bot
+description: A cloud-native intelligent garden irrigation management platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+sources:
+  - https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+maintainers:
+  - name: Smart Garden Bot Team
+    email: team@smartgardenbot.io
+keywords:
+  - garden
+  - irrigation
+  - iot
+  - automation
+  - kubernetes
+  - weather
+annotations:
+  category: IoT
+  licenses: MIT
+dependencies:
+  - name: postgresql
+    version: "12.12.10"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.4.0"  
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: cert-manager
+    version: "v1.13.3"
+    repository: "https://charts.jetstack.io"
+    condition: certManager.enabled
+  - name: kube-prometheus-stack
+    version: "55.5.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: monitoring.prometheus.enabled
+  - name: grafana
+    version: "7.0.19"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: monitoring.grafana.enabled
+  - name: loki-stack
+    version: "2.9.11"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: monitoring.loki.enabled

@@ -1,0 +1,216 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: smart-garden-bot
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 55.5.0
+    helm:
+      values: |
+        alertmanager:
+          enabled: true
+          config:
+            global:
+              resolve_timeout: 5m
+            route:
+              group_by: ['alertname', 'job']
+              group_wait: 10s
+              group_interval: 10s
+              repeat_interval: 12h
+              receiver: 'web.hook'
+            receivers:
+            - name: 'web.hook'
+              webhook_configs:
+              - url: 'http://smart-garden-bot-api:8080/api/v1/webhooks/alerts'
+          persistence:
+            enabled: true
+            size: 10Gi
+        prometheus:
+          enabled: true
+          prometheusSpec:
+            retention: 30d
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: gp3
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 100Gi
+            resources:
+              requests:
+                memory: 4Gi
+                cpu: 2000m
+              limits:
+                memory: 8Gi
+                cpu: 4000m
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            additionalScrapeConfigs:
+            - job_name: 'smart-garden-bot-api'
+              static_configs:
+              - targets: ['smart-garden-bot-api.smart-garden-bot:9090']
+            - job_name: 'smart-garden-bot-operator'
+              static_configs:
+              - targets: ['smart-garden-bot-operator.smart-garden-bot-system:8080']
+        grafana:
+          enabled: true
+          adminPassword: admin
+          persistence:
+            enabled: true
+            size: 10Gi
+          dashboardProviders:
+            dashboardproviders.yaml:
+              apiVersion: 1
+              providers:
+              - name: 'default'
+                orgId: 1
+                folder: ''
+                type: file
+                disableDeletion: false
+                editable: true
+                options:
+                  path: /var/lib/grafana/dashboards/default
+              - name: 'smart-garden-bot'
+                orgId: 1
+                folder: 'Smart Garden Bot'
+                type: file
+                disableDeletion: false
+                editable: true
+                options:
+                  path: /var/lib/grafana/dashboards/smart-garden-bot
+          dashboards:
+            smart-garden-bot:
+              garden-overview:
+                gnetId: 15757
+                revision: 1
+                datasource: Prometheus
+              api-metrics:
+                gnetId: 15758
+                revision: 1
+                datasource: Prometheus
+              operator-metrics:
+                gnetId: 15759
+                revision: 1
+                datasource: Prometheus
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+            datasources:
+              enabled: true
+              defaultDatasourceEnabled: true
+        kubeStateMetrics:
+          enabled: true
+        nodeExporter:
+          enabled: true
+        prometheusOperator:
+          enabled: true
+          admissionWebhooks:
+            enabled: true
+            patch:
+              enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        maxDuration: 3m0s
+        factor: 2
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: smart-garden-bot
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki-stack
+    targetRevision: 2.9.11
+    helm:
+      values: |
+        loki:
+          enabled: true
+          persistence:
+            enabled: true
+            size: 50Gi
+          config:
+            auth_enabled: false
+            server:
+              http_listen_port: 3100
+            ingester:
+              lifecycler:
+                address: 127.0.0.1
+                ring:
+                  kvstore:
+                    store: inmemory
+                  replication_factor: 1
+              chunk_idle_period: 3m
+              chunk_block_size: 262144
+              chunk_retain_period: 1m
+            storage_config:
+              boltdb_shipper:
+                active_index_directory: /data/loki/boltdb-shipper-active
+                cache_location: /data/loki/boltdb-shipper-cache
+                cache_ttl: 24h
+                shared_store: filesystem
+              filesystem:
+                directory: /data/loki/chunks
+            schema_config:
+              configs:
+                - from: 2020-10-24
+                  store: boltdb-shipper
+                  object_store: filesystem
+                  schema: v11
+                  index:
+                    prefix: index_
+                    period: 24h
+            limits_config:
+              reject_old_samples: true
+              reject_old_samples_max_age: 168h
+        promtail:
+          enabled: true
+          config:
+            clients:
+              - url: http://{{ include "loki.fullname" . }}:3100/loki/api/v1/push
+        fluent-bit:
+          enabled: false
+        grafana:
+          enabled: false  # We use the one from kube-prometheus-stack
+        prometheus:
+          enabled: false  # We use the one from kube-prometheus-stack
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        maxDuration: 3m0s
+        factor: 2

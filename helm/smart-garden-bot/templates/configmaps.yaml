@@ -1,0 +1,16 @@
+{{- if .Values.configMaps.app.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.configMaps.app.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "smart-garden-bot.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+data:
+  timezone: {{ .Values.global.timezone | quote }}
+  {{- range $key, $value := .Values.configMaps.app.data }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+{{- end }}

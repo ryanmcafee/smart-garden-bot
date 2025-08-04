@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smart-garden-bot-development
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: smart-garden-bot
+  source:
+    repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git
+    path: helm/smart-garden-bot
+    targetRevision: develop
+    helm:
+      valueFiles:
+      - values.yaml
+      - values-development.yaml
+      parameters:
+      - name: global.imageRegistry
+        value: ghcr.io
+      - name: webApp.image.tag
+        value: develop-latest
+      - name: apiServer.image.tag
+        value: develop-latest
+      - name: operator.image.tag
+        value: develop-latest
+      - name: ingress.hosts[0].host
+        value: dev.app.smartgardenbot.io
+      - name: ingress.hosts[1].host
+        value: dev.api.smartgardenbot.io
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: smart-garden-bot-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        maxDuration: 3m0s
+        factor: 2
+  revisionHistoryLimit: 10

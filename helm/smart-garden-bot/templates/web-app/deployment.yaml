@@ -1,0 +1,98 @@
+{{- if .Values.webApp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "smart-garden-bot.labels.web" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  {{- if not .Values.webApp.autoscaling.enabled }}
+  replicas: {{ .Values.webApp.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "smart-garden-bot.selectorLabels.web" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
+        {{- with .Values.webApp.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "smart-garden-bot.selectorLabels.web" . | nindent 8 }}
+        version: {{ .Values.webApp.image.tag | default .Chart.AppVersion }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smart-garden-bot.serviceAccountName.web" . }}
+      securityContext:
+        {{- toYaml .Values.webApp.podSecurityContext | nindent 8 }}
+      containers:
+        - name: web-app
+          securityContext:
+            {{- toYaml .Values.webApp.securityContext | nindent 12 }}
+          image: "{{ .Values.webApp.image.registry }}/{{ .Values.webApp.image.repository }}:{{ .Values.webApp.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.webApp.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.webApp.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.webApp.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database.name }}
+                  key: database-url
+            - name: AUTH0_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.auth.name }}
+                  key: auth0-client-secret
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.auth.name }}
+                  key: nextauth-secret
+          {{- with .Values.webApp.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.webApp.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.webApp.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.webApp.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/.next/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+      {{- with .Values.webApp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webApp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webApp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
