@@ -71,7 +71,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 argocd login localhost:8080 --username admin --password [PASSWORD_FROM_ABOVE] --insecure
 
 # Add GitHub repository
-argocd repo add https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git
+argocd repo add https://github.com/ryanmcafee/smart-garden-bot.git
 
 # Add Helm repositories
 argocd repo add https://charts.bitnami.com/bitnami --type helm --name bitnami
@@ -307,8 +307,8 @@ kubectl get pods -n ingress-nginx
 kubectl get ingress -n smart-garden-bot
 
 # Test external access
-curl -k https://api.smartgardenbot.io/health
-curl -k https://app.smartgardenbot.io
+curl -k https://api.smartgardenbot.com/health
+curl -k https://app.smartgardenbot.com
 ```
 
 ### 7.3 Optional: Deploy Istio Service Mesh
@@ -339,13 +339,13 @@ echo "🔍 Starting end-to-end health check..."
 
 # API health checks
 echo "Testing API endpoints..."
-curl -f https://api.smartgardenbot.io/health || exit 1
-curl -f https://api.smartgardenbot.io/ready || exit 1
-curl -f https://api.smartgardenbot.io/api/v1/openapi.json || exit 1
+curl -f https://api.smartgardenbot.com/health || exit 1
+curl -f https://api.smartgardenbot.com/ready || exit 1
+curl -f https://api.smartgardenbot.com/api/v1/openapi.json || exit 1
 
 # Web application check
 echo "Testing web application..."
-curl -f https://app.smartgardenbot.io || exit 1
+curl -f https://app.smartgardenbot.com || exit 1
 
 # Database connectivity
 echo "Testing database connectivity..."
@@ -379,7 +379,7 @@ export let options = {
 };
 
 export default function () {
-  let response = http.get('https://api.smartgardenbot.io/health');
+  let response = http.get('https://api.smartgardenbot.com/health');
   check(response, {
     'status is 200': (r) => r.status === 200,
     'response time < 500ms': (r) => r.timings.duration < 500,
@@ -492,7 +492,7 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
 kubectl describe ingress -n smart-garden-bot smart-garden-bot
 
 # Test from ingress controller
-kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- curl -H "Host: api.smartgardenbot.io" http://smart-garden-bot-api.smart-garden-bot:8080/health
+kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- curl -H "Host: api.smartgardenbot.com" http://smart-garden-bot-api.smart-garden-bot:8080/health
 ```
 
 ## Post-Deployment Checklist

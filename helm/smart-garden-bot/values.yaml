@@ -104,7 +104,7 @@ webApp:
     failureThreshold: 3
 
 # API Server Configuration
-apiServer:
+api:
   enabled: true
   replicaCount: 3
   
@@ -349,14 +349,14 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    - host: app.smartgardenbot.io
+    - host: app.smartgardenbot.com
       paths:
         - path: /
           pathType: Prefix
           service:
             name: smart-garden-bot-web
             port: 3000
-    - host: api.smartgardenbot.io
+    - host: api.smartgardenbot.com
       paths:
         - path: /
           pathType: Prefix
@@ -366,8 +366,8 @@ ingress:
   tls:
     - secretName: smartgardenbot-tls
       hosts:
-        - app.smartgardenbot.io
-        - api.smartgardenbot.io
+        - app.smartgardenbot.com
+        - api.smartgardenbot.com
 
 # Service Monitor for Prometheus
 serviceMonitor:
@@ -441,8 +441,8 @@ istio:
   gateway:
     enabled: false
     hosts:
-      - app.smartgardenbot.io
-      - api.smartgardenbot.io
+      - app.smartgardenbot.com
+      - api.smartgardenbot.com
   virtualService:
     enabled: false
   peerAuthentication:

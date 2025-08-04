@@ -113,7 +113,7 @@ INSERT INTO auth.users (
 ) VALUES 
 (
     '550e8400-e29b-41d4-a716-446655440001',
-    'demo@smartgardenbot.io',
+    'demo@smartgardenbot.com',
     'Demo User',
     'auth0|demo123',
     '{
@@ -124,7 +124,7 @@ INSERT INTO auth.users (
 ),
 (
     '550e8400-e29b-41d4-a716-446655440002',
-    'professional@smartgardenbot.io',
+    'professional@smartgardenbot.com',
     'Professional Gardener',
     'auth0|pro456',
     '{

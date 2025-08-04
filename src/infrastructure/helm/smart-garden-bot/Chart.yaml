@@ -4,13 +4,13 @@ description: A Helm chart for Smart Garden Bot - Intelligent garden irrigation a
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
-home: https://smartgardenbot.io
+home: https://smartgardenbot.com
 sources:
-  - https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+  - https://github.com/ryanmcafee/smart-garden-bot
 maintainers:
   - name: Smart Garden Bot Team
-    email: team@smartgardenbot.io
-    url: https://smartgardenbot.io
+    email: team@smartgardenbot.com
+    url: https://smartgardenbot.com
 keywords:
   - garden
   - automation
@@ -23,7 +23,7 @@ keywords:
 annotations:
   category: Agriculture
   licenses: MIT
-icon: https://smartgardenbot.io/static/icon.png
+icon: https://smartgardenbot.com/static/icon.png
 
 dependencies:
   - name: postgresql

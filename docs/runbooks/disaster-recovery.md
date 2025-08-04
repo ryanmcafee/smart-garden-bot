@@ -141,7 +141,7 @@ aws route53 change-resource-record-sets --hosted-zone-id Z123456789 --change-bat
   "Changes": [{
     "Action": "UPSERT",
     "ResourceRecordSet": {
-      "Name": "api.smartgardenbot.io",
+      "Name": "api.smartgardenbot.com",
       "Type": "A",
       "AliasTarget": {
         "DNSName": "dr-lb.us-west-2.elb.amazonaws.com",

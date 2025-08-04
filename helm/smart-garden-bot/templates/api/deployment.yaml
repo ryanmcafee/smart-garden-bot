@@ -1,4 +1,4 @@
-{{- if .Values.apiServer.enabled }}
+{{- if .Values.api.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,8 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
-  {{- if not .Values.apiServer.autoscaling.enabled }}
-  replicas: {{ .Values.apiServer.replicaCount }}
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
@@ -20,12 +20,12 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
-        {{- with .Values.apiServer.podAnnotations }}
+        {{- with .Values.api.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
         {{- include "smart-garden-bot.selectorLabels.api" . | nindent 8 }}
-        version: {{ .Values.apiServer.image.tag | default .Chart.AppVersion }}
+        version: {{ .Values.api.image.tag | default .Chart.AppVersion }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -33,10 +33,10 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "smart-garden-bot.serviceAccountName.api" . }}
       securityContext:
-        {{- toYaml .Values.apiServer.podSecurityContext | nindent 8 }}
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
       initContainers:
         - name: db-migration
-          image: "{{ .Values.apiServer.image.registry }}/{{ .Values.apiServer.image.repository }}:{{ .Values.apiServer.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.api.image.registry }}/{{ .Values.api.image.repository }}:{{ .Values.api.image.tag | default .Chart.AppVersion }}"
           command: ["/app/migrate"]
           env:
             - name: DATABASE_URL
@@ -45,22 +45,22 @@ spec:
                   name: {{ .Values.secrets.database.name }}
                   key: database-url
           securityContext:
-            {{- toYaml .Values.apiServer.securityContext | nindent 12 }}
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
       containers:
         - name: api
           securityContext:
-            {{- toYaml .Values.apiServer.securityContext | nindent 12 }}
-          image: "{{ .Values.apiServer.image.registry }}/{{ .Values.apiServer.image.repository }}:{{ .Values.apiServer.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.apiServer.image.pullPolicy }}
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          image: "{{ .Values.api.image.registry }}/{{ .Values.api.image.repository }}:{{ .Values.api.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.apiServer.service.targetPort }}
+              containerPort: {{ .Values.api.service.targetPort }}
               protocol: TCP
             - name: metrics
               containerPort: 9090
               protocol: TCP
           env:
-            {{- range $key, $value := .Values.apiServer.env }}
+            {{- range $key, $value := .Values.api.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
@@ -99,31 +99,31 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.stripe.name }}
                   key: stripe-webhook-secret
-          {{- with .Values.apiServer.envFrom }}
+          {{- with .Values.api.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           livenessProbe:
-            {{- toYaml .Values.apiServer.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.api.livenessProbe | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.apiServer.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.api.readinessProbe | nindent 12 }}
           resources:
-            {{- toYaml .Values.apiServer.resources | nindent 12 }}
+            {{- toYaml .Values.api.resources | nindent 12 }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: tmp
           emptyDir: {}
-      {{- with .Values.apiServer.nodeSelector }}
+      {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.apiServer.affinity }}
+      {{- with .Values.api.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.apiServer.tolerations }}
+      {{- with .Values.api.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

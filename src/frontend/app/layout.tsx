@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://smartgardenbot.io',
+    url: 'https://smartgardenbot.com',
     title: 'Smart Garden Bot - Intelligent Garden Automation',
     description: 'Automate your garden watering with intelligent weather-based decisions and IoT sensor integration.',
     siteName: 'Smart Garden Bot',

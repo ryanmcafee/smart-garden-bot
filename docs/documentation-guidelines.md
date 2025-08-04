@@ -429,7 +429,7 @@ export class GardenService {
 ```markdown
 # Smart Garden Bot
 
-[![Build Status](https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot/workflows/CI/badge.svg)](https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot/actions)
+[![Build Status](https://github.com/ryanmcafee/smart-garden-bot/workflows/CI/badge.svg)](https://github.com/ryanmcafee/smart-garden-bot/actions)
 [![Coverage Status](https://codecov.io/gh/smart-garden-bot/smart-garden-bot/branch/main/graph/badge.svg)](https://codecov.io/gh/smart-garden-bot/smart-garden-bot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -457,7 +457,7 @@ Intelligent irrigation management platform that automates garden watering based 
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git
+   git clone https://github.com/ryanmcafee/smart-garden-bot.git
    cd smart-garden-bot
    ```
 
@@ -522,8 +522,8 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 ## Support
 
 - 📖 [Documentation](https://docs.smartgardenbot.com)
-- 🐛 [Issue Tracker](https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot/issues)
-- 💬 [Discussions](https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot/discussions)
+- 🐛 [Issue Tracker](https://github.com/ryanmcafee/smart-garden-bot/issues)
+- 💬 [Discussions](https://github.com/ryanmcafee/smart-garden-bot/discussions)
 - 📧 [Email Support](mailto:support@smartgardenbot.com)
 ```
 

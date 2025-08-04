@@ -26,7 +26,7 @@ networking:
 kubeadmConfigPatches:
 - |
   kind: ClusterConfiguration
-  apiServer:
+  api:
     extraArgs:
       enable-admission-plugins: NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook
 containerdConfigPatches:

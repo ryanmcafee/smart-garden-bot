@@ -9,7 +9,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@smartgardenbot.io
+    email: admin@smartgardenbot.com
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
@@ -35,7 +35,7 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: admin@smartgardenbot.io
+    email: admin@smartgardenbot.com
     privateKeySecretRef:
       name: letsencrypt-staging
     solvers:
@@ -77,12 +77,12 @@ spec:
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
-  commonName: smartgardenbot.io
+  commonName: smartgardenbot.com
   dnsNames:
-  - smartgardenbot.io
-  - www.smartgardenbot.io
-  - app.smartgardenbot.io
-  - api.smartgardenbot.io
+  - smartgardenbot.com
+  - www.smartgardenbot.com
+  - app.smartgardenbot.com
+  - api.smartgardenbot.com
 
 ---
 # Certificate for development domain
@@ -98,8 +98,8 @@ spec:
   issuerRef:
     name: letsencrypt-staging
     kind: ClusterIssuer
-  commonName: dev.smartgardenbot.io
+  commonName: dev.smartgardenbot.com
   dnsNames:
-  - dev.smartgardenbot.io
-  - dev.app.smartgardenbot.io
-  - dev.api.smartgardenbot.io
+  - dev.smartgardenbot.com
+  - dev.app.smartgardenbot.com
+  - dev.api.smartgardenbot.com

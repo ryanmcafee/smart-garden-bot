@@ -16,7 +16,7 @@ spec:
   
   # Source configuration
   source:
-    repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+    repoURL: https://github.com/ryanmcafee/smart-garden-bot
     targetRevision: HEAD
     path: src/infrastructure/helm/smart-garden-bot
     
@@ -31,13 +31,13 @@ spec:
       parameters:
         - name: webapp.replicaCount
           value: "3"
-        - name: apiserver.replicaCount
+        - name: api.replicaCount
           value: "5"
         - name: operator.replicaCount
           value: "1"
         - name: webapp.autoscaling.enabled
           value: "true"
-        - name: apiserver.autoscaling.enabled
+        - name: api.autoscaling.enabled
           value: "true"
         - name: monitoring.enabled
           value: "true"
@@ -59,7 +59,7 @@ spec:
         webapp:
           image:
             tag: "v1.0.0"
-        apiserver:
+        api:
           image:
             tag: "v1.0.0"
         operator:
@@ -146,7 +146,7 @@ spec:
             additionalScrapeConfigs:
               - job_name: 'smart-garden-bot-api'
                 static_configs:
-                  - targets: ['smart-garden-bot-apiserver.smart-garden-bot.svc.cluster.local:8080']
+                  - targets: ['smart-garden-bot-api.smart-garden-bot.svc.cluster.local:8080']
                 metrics_path: /metrics
                 scrape_interval: 30s
               
@@ -270,7 +270,7 @@ spec:
   
   # Source repositories
   sourceRepos:
-    - 'https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot'
+    - 'https://github.com/ryanmcafee/smart-garden-bot'
     - 'https://charts.bitnami.com/bitnami'
     - 'https://cloudnative-pg.github.io/charts'
     - 'https://prometheus-community.github.io/helm-charts'
@@ -396,7 +396,7 @@ spec:
     spec:
       project: smart-garden-bot-project
       source:
-        repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+        repoURL: https://github.com/ryanmcafee/smart-garden-bot
         targetRevision: '{{values.revision}}'
         path: src/infrastructure/helm/smart-garden-bot
         helm:
@@ -406,7 +406,7 @@ spec:
           parameters:
             - name: webapp.replicaCount
               value: '{{values.replicas}}'
-            - name: apiserver.replicaCount
+            - name: api.replicaCount
               value: '{{values.replicas}}'
       destination:
         server: '{{server}}'

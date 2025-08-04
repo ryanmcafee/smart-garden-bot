@@ -10,7 +10,7 @@ spec:
   
   # Source repositories
   sourceRepos:
-  - 'https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git'
+  - 'https://github.com/ryanmcafee/smart-garden-bot.git'
   - 'https://github.com/ryanmcafee/smart-garden-bot/gitops.git'
   - 'https://charts.bitnami.com/bitnami'
   - 'https://charts.jetstack.io'

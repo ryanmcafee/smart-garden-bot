@@ -56,7 +56,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-apiserver-ingress
+  name: allow-api-ingress
   namespace: smart-garden-bot
   labels:
     app.kubernetes.io/name: smart-garden-bot
@@ -64,7 +64,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: apiserver
+      app.kubernetes.io/component: api
   policyTypes:
     - Ingress
   ingress:

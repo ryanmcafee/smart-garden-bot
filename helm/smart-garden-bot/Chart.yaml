@@ -4,12 +4,12 @@ description: A cloud-native intelligent garden irrigation management platform
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-home: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+home: https://github.com/ryanmcafee/smart-garden-bot
 sources:
-  - https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+  - https://github.com/ryanmcafee/smart-garden-bot
 maintainers:
   - name: Smart Garden Bot Team
-    email: team@smartgardenbot.io
+    email: team@smartgardenbot.com
 keywords:
   - garden
   - irrigation

@@ -8,7 +8,7 @@ metadata:
 spec:
   project: smart-garden-bot
   source:
-    repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git
+    repoURL: https://github.com/ryanmcafee/smart-garden-bot.git
     path: helm/smart-garden-bot
     targetRevision: develop
     helm:
@@ -20,14 +20,14 @@ spec:
         value: ghcr.io
       - name: webApp.image.tag
         value: develop-latest
-      - name: apiServer.image.tag
+      - name: api.image.tag
         value: develop-latest
       - name: operator.image.tag
         value: develop-latest
       - name: ingress.hosts[0].host
-        value: dev.app.smartgardenbot.io
+        value: dev.app.smartgardenbot.com
       - name: ingress.hosts[1].host
-        value: dev.api.smartgardenbot.io
+        value: dev.api.smartgardenbot.com
   destination:
     server: https://kubernetes.default.svc
     namespace: smart-garden-bot-dev

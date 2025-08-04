@@ -109,7 +109,7 @@ src/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot
+   git clone https://github.com/ryanmcafee/smart-garden-bot
    cd smart-garden-bot/src
    ```
 
@@ -458,7 +458,7 @@ monitoring:
 **Database Connection Issues:**
 ```bash
 # Check database connectivity
-kubectl exec -it deployment/smart-garden-bot-apiserver -- pg_isready -h postgres
+kubectl exec -it deployment/smart-garden-bot-api -- pg_isready -h postgres
 
 # View connection pool stats
 curl http://localhost:8080/health | jq '.checks.database_pool'
@@ -525,7 +525,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 Interactive API documentation is available at:
 - **Local**: http://localhost:8080/swagger-ui
-- **Production**: https://api.smartgardenbot.io/swagger-ui
+- **Production**: https://api.smartgardenbot.com/swagger-ui
 
 ## 🏆 Production Readiness Checklist
 

@@ -231,8 +231,8 @@ WHERE name IN ('uuid-ossp', 'pgcrypto', 'vector', 'timescaledb');
 kubectl rollout restart deployment/smart-garden-bot-api -n smart-garden-bot
 
 # Test API endpoints
-curl -f https://api.smartgardenbot.io/health
-curl -f https://api.smartgardenbot.io/ready
+curl -f https://api.smartgardenbot.com/health
+curl -f https://api.smartgardenbot.com/ready
 
 # Check API logs for database errors
 kubectl logs -n smart-garden-bot -l app.kubernetes.io/component=api --tail=50 | grep -i error

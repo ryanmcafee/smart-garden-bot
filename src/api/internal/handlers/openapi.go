@@ -24,8 +24,8 @@ func getOpenAPISpecification() map[string]interface{} {
 			"version":     "1.0.0",
 			"contact": map[string]interface{}{
 				"name":  "Smart Garden Bot Team",
-				"email": "support@smartgardenbot.io",
-				"url":   "https://smartgardenbot.io",
+				"email": "support@smartgardenbot.com",
+				"url":   "https://smartgardenbot.com",
 			},
 			"license": map[string]interface{}{
 				"name": "MIT",
@@ -34,11 +34,11 @@ func getOpenAPISpecification() map[string]interface{} {
 		},
 		"servers": []map[string]interface{}{
 			{
-				"url":         "https://api.smartgardenbot.io/api/v1",
+				"url":         "https://api.smartgardenbot.com/api/v1",
 				"description": "Production server",
 			},
 			{
-				"url":         "https://staging-api.smartgardenbot.io/api/v1",
+				"url":         "https://staging-api.smartgardenbot.com/api/v1",
 				"description": "Staging server",
 			},
 			{

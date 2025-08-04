@@ -128,10 +128,10 @@ Create the name of the service account to use for web app
 Create the name of the service account to use for API server
 */}}
 {{- define "smart-garden-bot.serviceAccountName.api" -}}
-{{- if .Values.apiServer.serviceAccount.create }}
-{{- default (printf "%s-api" (include "smart-garden-bot.fullname" .)) .Values.apiServer.serviceAccount.name }}
+{{- if .Values.api.serviceAccount.create }}
+{{- default (printf "%s-api" (include "smart-garden-bot.fullname" .)) .Values.api.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.apiServer.serviceAccount.name }}
+{{- default "default" .Values.api.serviceAccount.name }}
 {{- end }}
 {{- end }}
 

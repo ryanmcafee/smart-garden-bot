@@ -16,8 +16,8 @@ spec:
       name: http
       protocol: HTTP
     hosts:
-    - app.smartgardenbot.io
-    - api.smartgardenbot.io
+    - app.smartgardenbot.com
+    - api.smartgardenbot.com
     tls:
       httpsRedirect: true
   - port:
@@ -28,8 +28,8 @@ spec:
       mode: SIMPLE
       credentialName: smartgardenbot-prod-tls
     hosts:
-    - app.smartgardenbot.io
-    - api.smartgardenbot.io
+    - app.smartgardenbot.com
+    - api.smartgardenbot.com
 
 ---
 # VirtualService for Web Application
@@ -42,7 +42,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   hosts:
-  - app.smartgardenbot.io
+  - app.smartgardenbot.com
   gateways:
   - smart-garden-bot-gateway
   http:
@@ -76,7 +76,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   hosts:
-  - api.smartgardenbot.io
+  - api.smartgardenbot.com
   gateways:
   - smart-garden-bot-gateway
   http:
@@ -100,8 +100,8 @@ spec:
     timeout: 60s
     corsPolicy:
       allowOrigins:
-      - exact: https://app.smartgardenbot.io
-      - exact: https://dev.app.smartgardenbot.io
+      - exact: https://app.smartgardenbot.com
+      - exact: https://dev.app.smartgardenbot.com
       allowMethods:
       - GET
       - POST

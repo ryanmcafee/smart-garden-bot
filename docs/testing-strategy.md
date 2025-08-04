@@ -371,7 +371,7 @@ func TestIntegration_UserGardenFlow(t *testing.T) {
         DatabaseURL: container.ConnectionString(),
         JWTSecret:   "test-secret",
     }
-    server := setupAPIServer(t, config)
+    server := setupApi(t, config)
     defer server.Close()
     
     // Setup mock external services
@@ -1099,8 +1099,8 @@ func TestMQTTCommunication(t *testing.T) {
     defer device.Close()
     
     // Setup API server with MQTT client
-    apiServer := setupAPIServerWithMQTT(t, broker.URL())
-    defer apiServer.Close()
+    api := setupApiWithMQTT(t, broker.URL())
+    defer api.Close()
     
     t.Run("device publishes sensor data", func(t *testing.T) {
         sensorData := SensorData{
@@ -1116,7 +1116,7 @@ func TestMQTTCommunication(t *testing.T) {
         // Verify API received and processed data
         time.Sleep(500 * time.Millisecond)
         
-        received := getReceivedSensorData(t, apiServer, "test-station-001")
+        received := getReceivedSensorData(t, api, "test-station-001")
         assert.Equal(t, sensorData.Temperature, received.Temperature)
         assert.Equal(t, sensorData.Humidity, received.Humidity)
     })
@@ -1129,7 +1129,7 @@ func TestMQTTCommunication(t *testing.T) {
             Duration:  1800, // 30 minutes
         }
         
-        err := apiServer.SendWateringCommand(command)
+        err := api.SendWateringCommand(command)
         assert.NoError(t, err)
         
         // Verify device received command

@@ -8,7 +8,7 @@ metadata:
 spec:
   project: smart-garden-bot
   source:
-    repoURL: https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot.git
+    repoURL: https://github.com/ryanmcafee/smart-garden-bot.git
     path: helm/smart-garden-bot
     targetRevision: main
     helm:
@@ -20,14 +20,14 @@ spec:
         value: ghcr.io
       - name: webApp.image.tag
         value: v0.1.0
-      - name: apiServer.image.tag
+      - name: api.image.tag
         value: v0.1.0
       - name: operator.image.tag
         value: v0.1.0
       - name: ingress.hosts[0].host
-        value: app.smartgardenbot.io
+        value: app.smartgardenbot.com
       - name: ingress.hosts[1].host
-        value: api.smartgardenbot.io
+        value: api.smartgardenbot.com
       - name: postgresql.auth.postgresPassword
         value: $postgresql:postgres-password
       - name: postgresql.auth.password
@@ -56,4 +56,4 @@ spec:
   - name: "Owner"
     value: "Smart Garden Bot Team"
   - name: "Support"
-    value: "team@smartgardenbot.io"
+    value: "team@smartgardenbot.com"

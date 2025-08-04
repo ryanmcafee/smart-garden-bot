@@ -118,8 +118,8 @@ Validate required values
 {{- if and .Values.webapp.enabled (not .Values.webapp.env.AUTH0_BASE_URL) }}
 {{- fail "webapp.env.AUTH0_BASE_URL is required when webapp is enabled" }}
 {{- end }}
-{{- if and .Values.apiserver.enabled (not .Values.apiserver.env.DB_HOST) }}
-{{- fail "apiserver.env.DB_HOST is required when apiserver is enabled" }}
+{{- if and .Values.api.enabled (not .Values.api.env.DB_HOST) }}
+{{- fail "api.env.DB_HOST is required when api is enabled" }}
 {{- end }}
 {{- if and .Values.operator.enabled (not .Values.operator.rbac.create) }}
 {{- fail "operator.rbac.create must be true when operator is enabled" }}
@@ -183,7 +183,7 @@ redis://$(REDIS_HOST):$(REDIS_PORT)
 {{/*
 Generate API server configuration
 */}}
-{{- define "smart-garden-bot.apiserver.config" -}}
+{{- define "smart-garden-bot.api.config" -}}
 database:
   url: {{ include "smart-garden-bot.databaseUrl" . }}
   maxConnections: 25
@@ -193,16 +193,16 @@ redis:
   url: {{ include "smart-garden-bot.redisUrl" . }}
   
 server:
-  port: {{ .Values.apiserver.service.targetPort }}
+  port: {{ .Values.api.service.targetPort }}
   readTimeout: 30s
   writeTimeout: 30s
   
 logging:
-  level: {{ .Values.apiserver.env.LOG_LEVEL | default "info" }}
+  level: {{ .Values.api.env.LOG_LEVEL | default "info" }}
   format: json
   
 metrics:
-  enabled: {{ .Values.apiserver.env.METRICS_ENABLED | default "true" }}
+  enabled: {{ .Values.api.env.METRICS_ENABLED | default "true" }}
   port: 8080
   
 cors:

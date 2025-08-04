@@ -64,7 +64,7 @@ spec:
     interval: 30s
     rules:
     # API Server alerts
-    - alert: APIServerDown
+    - alert: ApiDown
       expr: up{job="smart-garden-bot-api"} == 0
       for: 5m
       labels:
@@ -73,9 +73,9 @@ spec:
       annotations:
         summary: "Smart Garden Bot API Server is down"
         description: "API Server has been down for more than 5 minutes"
-        runbook_url: "https://github.com/ryanmcafee/smart-garden-bot/smart-garden-bot/blob/main/docs/runbooks/api-down.md"
+        runbook_url: "https://github.com/ryanmcafee/smart-garden-bot/blob/main/docs/runbooks/api-down.md"
 
-    - alert: APIServerHighLatency
+    - alert: ApiHighLatency
       expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="smart-garden-bot-api"}[5m])) > 0.5
       for: 5m
       labels:
@@ -85,7 +85,7 @@ spec:
         summary: "Smart Garden Bot API Server high latency"
         description: "95th percentile latency is above 500ms for 5 minutes"
 
-    - alert: APIServerHighErrorRate
+    - alert: ApiHighErrorRate
       expr: rate(http_requests_total{job="smart-garden-bot-api",status=~"5.."}[5m]) / rate(http_requests_total{job="smart-garden-bot-api"}[5m]) > 0.05
       for: 5m
       labels:

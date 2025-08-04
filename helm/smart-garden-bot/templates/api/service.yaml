@@ -1,4 +1,4 @@
-{{- if .Values.apiServer.enabled }}
+{{- if .Values.api.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,16 +6,16 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "smart-garden-bot.labels.api" . | nindent 4 }}
-  {{- with .Values.apiServer.service.annotations }}
+  {{- with .Values.api.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
     argocd.argoproj.io/sync-wave: "2"
   {{- end }}
 spec:
-  type: {{ .Values.apiServer.service.type }}
+  type: {{ .Values.api.service.type }}
   ports:
-    - port: {{ .Values.apiServer.service.port }}
-      targetPort: {{ .Values.apiServer.service.targetPort }}
+    - port: {{ .Values.api.service.port }}
+      targetPort: {{ .Values.api.service.targetPort }}
       protocol: TCP
       name: http
     - port: 9090

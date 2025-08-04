@@ -4,7 +4,7 @@
 This runbook provides step-by-step instructions for diagnosing and resolving API server outages.
 
 ## Alert Details
-- **Alert Name**: APIServerDown
+- **Alert Name**: ApiDown
 - **Severity**: Critical
 - **Threshold**: API server unreachable for 5+ minutes
 - **Impact**: Complete service outage, users cannot access the application
@@ -20,8 +20,8 @@ This runbook provides step-by-step instructions for diagnosing and resolving API
 ### 2. Quick Health Check
 ```bash
 # Check if API endpoints are responding
-curl -f https://api.smartgardenbot.io/health
-curl -f https://api.smartgardenbot.io/ready
+curl -f https://api.smartgardenbot.com/health
+curl -f https://api.smartgardenbot.com/ready
 
 # Check ArgoCD for deployment status
 kubectl get applications -n argocd smart-garden-bot-production
@@ -163,9 +163,9 @@ kubectl get configmap smart-garden-bot-config -n smart-garden-bot -o yaml
 ### 1. Verify Service Recovery
 ```bash
 # Comprehensive health check
-curl -f https://api.smartgardenbot.io/health
-curl -f https://api.smartgardenbot.io/ready
-curl -f https://api.smartgardenbot.io/api/v1/openapi.json
+curl -f https://api.smartgardenbot.com/health
+curl -f https://api.smartgardenbot.com/ready
+curl -f https://api.smartgardenbot.com/api/v1/openapi.json
 
 # Check metrics are being collected
 # View Grafana dashboard for API server metrics

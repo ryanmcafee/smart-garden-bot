@@ -378,7 +378,7 @@ jobs:
             --namespace smart-garden-bot \
             --create-namespace \
             --set webapp.image.tag=${{ github.sha }} \
-            --set apiserver.image.tag=${{ github.sha }} \
+            --set api.image.tag=${{ github.sha }} \
             --set operator.image.tag=${{ github.sha }} \
             --set cloudnative-pg.enabled=true \
             --set postgresql.enabled=false \
@@ -393,7 +393,7 @@ jobs:
             --timeout=300s
           
           # Test API server health
-          kubectl port-forward -n smart-garden-bot svc/smart-garden-bot-apiserver 8080:8080 &
+          kubectl port-forward -n smart-garden-bot svc/smart-garden-bot-api 8080:8080 &
           sleep 5
           
           # Health check
@@ -452,10 +452,10 @@ jobs:
             --namespace smart-garden-bot-staging \
             --create-namespace \
             --set webapp.image.tag=${{ github.sha }} \
-            --set apiserver.image.tag=${{ github.sha }} \
+            --set api.image.tag=${{ github.sha }} \
             --set operator.image.tag=${{ github.sha }} \
-            --set webapp.ingress.hosts[0].host=staging-app.smartgardenbot.io \
-            --set apiserver.ingress.hosts[0].host=staging-api.smartgardenbot.io \
+            --set webapp.ingress.hosts[0].host=staging-app.smartgardenbot.com \
+            --set api.ingress.hosts[0].host=staging-api.smartgardenbot.com \
             --values src/infrastructure/helm/smart-garden-bot/values-staging.yaml \
             --wait --timeout=10m
 
@@ -465,10 +465,10 @@ jobs:
           sleep 30
           
           # Test API health
-          curl -f https://staging-api.smartgardenbot.io/health
+          curl -f https://staging-api.smartgardenbot.com/health
           
           # Test frontend
-          curl -f https://staging-app.smartgardenbot.io | grep "Smart Garden Bot"
+          curl -f https://staging-app.smartgardenbot.com | grep "Smart Garden Bot"
 
   # =============================================
   # DEPLOYMENT TO PRODUCTION
@@ -511,7 +511,7 @@ jobs:
             --namespace smart-garden-bot \
             --create-namespace \
             --set webapp.image.tag=$VERSION \
-            --set apiserver.image.tag=$VERSION \
+            --set api.image.tag=$VERSION \
             --set operator.image.tag=$VERSION \
             --values src/infrastructure/helm/smart-garden-bot/values-production.yaml \
             --wait --timeout=15m
@@ -522,10 +522,10 @@ jobs:
           sleep 60
           
           # Test API health
-          curl -f https://api.smartgardenbot.io/health
+          curl -f https://api.smartgardenbot.com/health
           
           # Test frontend
-          curl -f https://app.smartgardenbot.io | grep "Smart Garden Bot"
+          curl -f https://app.smartgardenbot.com | grep "Smart Garden Bot"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1

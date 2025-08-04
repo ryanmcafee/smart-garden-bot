@@ -186,7 +186,7 @@ jobs:
     if: needs.setup.outputs.environment == 'development'
     environment:
       name: development
-      url: https://dev.app.smartgardenbot.io
+      url: https://dev.app.smartgardenbot.com
     steps:
       - name: Checkout GitOps repository
         uses: actions/checkout@v4
@@ -200,7 +200,7 @@ jobs:
           cd gitops
           # Update image tags in the development ArgoCD application
           yq eval '.spec.source.helm.parameters[] |= select(.name == "webApp.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
-          yq eval '.spec.source.helm.parameters[] |= select(.name == "apiServer.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "api.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
           yq eval '.spec.source.helm.parameters[] |= select(.name == "operator.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-development.yaml
           
           git config user.name "github-actions[bot]"
@@ -212,7 +212,7 @@ jobs:
       - name: Wait for ArgoCD sync
         run: |
           echo "Deployment triggered via GitOps. Check ArgoCD for sync status."
-          echo "Development URL: https://dev.app.smartgardenbot.io"
+          echo "Development URL: https://dev.app.smartgardenbot.com"
 
   # Deploy to production environment (manual approval required)
   deploy-production:
@@ -222,7 +222,7 @@ jobs:
     if: needs.setup.outputs.environment == 'production'
     environment:
       name: production
-      url: https://app.smartgardenbot.io
+      url: https://app.smartgardenbot.com
     steps:
       - name: Checkout GitOps repository
         uses: actions/checkout@v4
@@ -241,7 +241,7 @@ jobs:
           
           # Update image tags in the production ArgoCD application
           yq eval '.spec.source.helm.parameters[] |= select(.name == "webApp.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
-          yq eval '.spec.source.helm.parameters[] |= select(.name == "apiServer.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
+          yq eval '.spec.source.helm.parameters[] |= select(.name == "api.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
           yq eval '.spec.source.helm.parameters[] |= select(.name == "operator.image.tag").value = "${{ needs.setup.outputs.image_tag }}"' -i applications/smart-garden-bot-production.yaml
           
           git config user.name "github-actions[bot]"
@@ -292,11 +292,11 @@ jobs:
       - name: Run smoke tests
         run: |
           # Health check endpoints
-          curl -f https://dev.api.smartgardenbot.io/health || exit 1
-          curl -f https://dev.api.smartgardenbot.io/ready || exit 1
+          curl -f https://dev.api.smartgardenbot.com/health || exit 1
+          curl -f https://dev.api.smartgardenbot.com/ready || exit 1
           
           # Basic API functionality
-          curl -f https://dev.api.smartgardenbot.io/api/v1/openapi.json || exit 1
+          curl -f https://dev.api.smartgardenbot.com/api/v1/openapi.json || exit 1
           
           echo "✅ Smoke tests passed"
 
@@ -310,7 +310,7 @@ jobs:
       - name: Run OWASP ZAP scan
         uses: zaproxy/action-full-scan@v0.7.0
         with:
-          target: 'https://dev.app.smartgardenbot.io'
+          target: 'https://dev.app.smartgardenbot.com'
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a'
 
@@ -331,7 +331,7 @@ jobs:
             🚀 Deployment Successful
             Environment: ${{ needs.setup.outputs.environment }}
             Version: ${{ needs.setup.outputs.image_tag }}
-            ${{ needs.setup.outputs.environment == 'development' && 'URL: https://dev.app.smartgardenbot.io' || 'URL: https://app.smartgardenbot.io' }}
+            ${{ needs.setup.outputs.environment == 'development' && 'URL: https://dev.app.smartgardenbot.com' || 'URL: https://app.smartgardenbot.com' }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 

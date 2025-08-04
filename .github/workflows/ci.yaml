@@ -336,7 +336,7 @@ jobs:
         run: |
           helm install smart-garden-bot ./helm/smart-garden-bot \
             --set webApp.image.tag=${{ github.sha }} \
-            --set apiServer.image.tag=${{ github.sha }} \
+            --set api.image.tag=${{ github.sha }} \
             --set operator.image.tag=${{ github.sha }} \
             --set ingress.enabled=false \
             --wait --timeout=10m

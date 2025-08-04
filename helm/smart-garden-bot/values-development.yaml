@@ -23,7 +23,7 @@ webApp:
     API_BASE_URL: "http://smart-garden-bot-api:8080/api/v1"
     AUTH0_DOMAIN: "dev-smartgarden.auth0.com"
     
-apiServer:
+api:
   replicaCount: 1
   image:
     tag: "develop-latest"
@@ -41,7 +41,7 @@ apiServer:
     GIN_MODE: "debug"
     LOG_LEVEL: "debug"
     AUTH0_DOMAIN: "dev-smartgarden.auth0.com"
-    AUTH0_AUDIENCE: "https://dev-api.smartgardenbot.io"
+    AUTH0_AUDIENCE: "https://dev-api.smartgardenbot.com"
     WEATHER_PROVIDERS: "openweather,openmeteo"
     
 operator:
@@ -88,14 +88,14 @@ ingress:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     cert-manager.io/cluster-issuer: "letsencrypt-staging"
   hosts:
-    - host: dev.app.smartgardenbot.io
+    - host: dev.app.smartgardenbot.com
       paths:
         - path: /
           pathType: Prefix
           service:
             name: smart-garden-bot-web
             port: 3000
-    - host: dev.api.smartgardenbot.io
+    - host: dev.api.smartgardenbot.com
       paths:
         - path: /
           pathType: Prefix
@@ -105,8 +105,8 @@ ingress:
   tls:
     - secretName: smartgardenbot-dev-tls
       hosts:
-        - dev.app.smartgardenbot.io
-        - dev.api.smartgardenbot.io
+        - dev.app.smartgardenbot.com
+        - dev.api.smartgardenbot.com
 
 # Development secrets (these would be replaced with real values)
 secrets:
