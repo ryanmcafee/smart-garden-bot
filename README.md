@@ -1,8 +1,4 @@
-# Smart Garden Bot - Production-Ready Code src
-
-This repository contains comprehensive, production-ready code src and implementation patterns for the Smart Garden Bot project - an intelligent garden irrigation automation platform built with modern cloud-native technologies.
-
-## 🌱 Project Overview
+# 🌱 Project Overview
 
 Smart Garden Bot is a scalable SaaS platform that automates garden watering through intelligent weather-based decision making and IoT sensor integration. The platform consists of:
 
