@@ -9,14 +9,15 @@ import (
 )
 
 type Config struct {
-	Environment string
-	Server      ServerConfig
-	Database    DatabaseConfig
-	JWT         JWTConfig
-	Weather     WeatherConfig
-	Redis       RedisConfig
-	Monitoring  MonitoringConfig
-	Stripe      StripeConfig
+	Environment     string
+	IsKubernetes    bool
+	Server          ServerConfig
+	Database        DatabaseConfig
+	JWT             JWTConfig
+	Weather         WeatherConfig
+	Redis           RedisConfig
+	Monitoring      MonitoringConfig
+	Stripe          StripeConfig
 }
 
 type ServerConfig struct {
@@ -69,21 +70,36 @@ type StripeConfig struct {
 }
 
 func Load() (*Config, error) {
-	// Load .env file if it exists
+	// Load .env file if it exists (only in non-Kubernetes environments)
 	_ = godotenv.Load()
 
+	// Detect if running in Kubernetes
+	isKubernetes := isRunningInKubernetes()
+	
+	// Set defaults based on environment
+	var dbHost, redisHost string
+	if isKubernetes {
+		// Use Kubernetes service names with namespace
+		dbHost = "postgres-service.smart-garden-bot-db.svc.cluster.local"
+		redisHost = "redis-service.smart-garden-bot-api.svc.cluster.local"
+	} else {
+		dbHost = "localhost"
+		redisHost = "localhost"
+	}
+
 	cfg := &Config{
-		Environment: getEnv("ENVIRONMENT", "development"),
+		Environment:  getEnv("ENVIRONMENT", "development"),
+		IsKubernetes: isKubernetes,
 		Server: ServerConfig{
 			Port:         getEnvAsInt("SERVER_PORT", 8080),
 			ReadTimeout:  getEnvAsDuration("SERVER_READ_TIMEOUT", "30s"),
 			WriteTimeout: getEnvAsDuration("SERVER_WRITE_TIMEOUT", "30s"),
 		},
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
+			Host:     getEnv("DB_HOST", dbHost),
 			Port:     getEnvAsInt("DB_PORT", 5432),
-			Name:     getEnv("DB_NAME", "smart_garden_bot"),
-			User:     getEnv("DB_USER", "postgres"),
+			Name:     getEnv("DB_NAME", "smartgarden"),
+			User:     getEnv("DB_USER", "smartgarden"),
 			Password: getEnv("DB_PASSWORD", ""),
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 			MaxConns: getEnvAsInt("DB_MAX_CONNS", 25),
@@ -101,7 +117,7 @@ func Load() (*Config, error) {
 			CacheTTL:            getEnvAsDuration("WEATHER_CACHE_TTL", "30m"),
 		},
 		Redis: RedisConfig{
-			Host:     getEnv("REDIS_HOST", "localhost"),
+			Host:     getEnv("REDIS_HOST", redisHost),
 			Port:     getEnvAsInt("REDIS_PORT", 6379),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
@@ -154,4 +170,19 @@ func getEnvAsDuration(key string, defaultValue string) time.Duration {
 	}
 	duration, _ := time.ParseDuration(defaultValue)
 	return duration
+}
+
+// isRunningInKubernetes detects if the application is running inside a Kubernetes cluster
+func isRunningInKubernetes() bool {
+	// Check for Kubernetes service account token
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
+		return true
+	}
+	
+	// Check for KUBERNETES_SERVICE_HOST environment variable
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return true
+	}
+	
+	return false
 }

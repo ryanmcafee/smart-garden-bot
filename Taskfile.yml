@@ -1,0 +1,92 @@
+version: '3'
+
+tasks:
+  up:
+    desc: Start all services - Creates Kind cluster and starts Tilt
+    cmds:
+      - kind create cluster --config=kind-config.yaml
+      - kubectl apply -f https://github.com/cloudnative-pg/cloudnative-pg/releases/latest/download/cnpg-1.24.1.yaml
+      - tilt up
+
+  down:
+    desc: Stop all services - Stops Tilt and deletes Kind cluster
+    cmds:
+      - tilt down
+      - kind delete cluster --name smart-garden-bot
+
+  dev:
+    desc: Development mode - Starts Tilt with streaming logs
+    cmds:
+      - tilt up --stream
+
+  test:
+    desc: Run all tests
+    cmds:
+      - task: test:api
+      - task: test:frontend
+
+  test:api:
+    desc: Run API tests (Go)
+    dir: src/api
+    cmds:
+      - go test ./...
+
+  test:frontend:
+    desc: Run frontend tests (Node.js)
+    dir: src/frontend
+    cmds:
+      - npm test
+
+  test:local:
+    desc: Test local development setup
+    cmds:
+      - npx tsx scripts/test-local-setup.ts
+
+  build:
+    desc: Production build - Build all components
+    cmds:
+      - task: build:api
+      - task: build:frontend
+
+  build:api:
+    desc: Build API Docker image
+    dir: src/api
+    cmds:
+      - docker build -t smart-garden-bot/api .
+
+  build:frontend:
+    desc: Build frontend Docker image
+    dir: src/frontend
+    cmds:
+      - docker build -t smart-garden-bot/frontend .
+
+  init:
+    desc: Initialize environment - Create cluster and install CloudNativePG
+    cmds:
+      - kind create cluster --config=kind-config.yaml
+      - kubectl apply -f https://github.com/cloudnative-pg/cloudnative-pg/releases/latest/download/cnpg-1.24.1.yaml
+
+  # Additional utility tasks
+  clean:
+    desc: Clean up local development environment
+    cmds:
+      - tilt down || true
+      - kind delete cluster || true
+      - docker system prune -f
+
+  logs:
+    desc: View application logs
+    cmds:
+      - kubectl logs -n smart-garden-bot-api -l app=api --tail=100 -f
+
+  status:
+    desc: Check status of all services
+    cmds:
+      - echo "🔍 Checking Kind cluster..."
+      - kind get clusters || echo "❌ No Kind clusters found"
+      - echo ""
+      - echo "🔍 Checking Kubernetes namespaces..."
+      - kubectl get namespaces --show-labels || echo "❌ Cannot connect to cluster"
+      - echo ""
+      - echo "🔍 Checking Tilt resources..."
+      - tilt get uiresource || echo "❌ Tilt not running"

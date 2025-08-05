@@ -16,6 +16,8 @@ import (
 	"github.com/ryanmcafee/smart-garden-bot/api/internal/handlers"
 	"github.com/ryanmcafee/smart-garden-bot/api/internal/middleware"
 	"github.com/ryanmcafee/smart-garden-bot/api/internal/services"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
 )
 
 func main() {
@@ -62,6 +64,14 @@ func main() {
 	// OpenAPI and documentation
 	router.GET("/openapi.json", handlers.OpenAPISpec())
 	router.Static("/swagger-ui", "./static/swagger-ui")
+	
+	// Swagger documentation endpoints as requested
+	router.GET("/swagger", ginSwagger.WrapHandler(swaggerFiles.Handler, func(config *ginSwagger.Config) {
+		config.URL = "/openapi.json"
+	}))
+	router.GET("/docs", ginSwagger.WrapHandler(swaggerFiles.Handler, func(config *ginSwagger.Config) {
+		config.URL = "/openapi.json"
+	}))
 
 	// API routes
 	v1 := router.Group("/api/v1")

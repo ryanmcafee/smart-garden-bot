@@ -10,3 +10,4 @@ node_modules
 .cursorrules
 .claude
 src/frontend/.next
+.serena/cache/go/document_symbols_cache_v23-06-25.pkl

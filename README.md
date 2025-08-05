@@ -99,13 +99,38 @@ src/
 ### Prerequisites
 
 - **Docker Desktop** 4.20+
-- **Node.js** 18+
+- **Node.js** 24+
 - **Go** 1.21+
 - **kubectl** 1.28+
-- **Helm** 3.12+
-- **PostgreSQL** 15+ (for local development)
+- **Kind** 0.20+
+- **Tilt** 0.33+
 
-### Local Development Setup
+### Local Development Setup (Recommended - Kind + Tilt)
+
+**Complete Kubernetes development environment with hot-reloading:**
+
+1. **Clone and start the environment**
+   ```bash
+   git clone https://github.com/ryanmcafee/smart-garden-bot
+   cd smart-garden-bot
+   task up  # Creates Kind cluster and starts Tilt
+   ```
+
+2. **Run database migrations (first time)**
+   ```bash
+   tilt trigger db-migrate
+   tilt trigger db-seed
+   ```
+
+3. **Access services**
+   - Frontend: http://localhost:3000
+   - API: http://localhost:8080
+   - Development Dashboard: http://localhost:9090
+   - Database: localhost:5432 (user: smartgarden, password: localdev123)
+
+**See [LOCAL_DEV.md](LOCAL_DEV.md) for complete documentation.**
+
+### Alternative: Direct Development Setup
 
 1. **Clone the repository**
    ```bash

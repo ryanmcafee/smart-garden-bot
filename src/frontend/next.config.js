@@ -6,7 +6,7 @@ const withPWA = require('next-pwa')({
   disable: process.env.NODE_ENV === 'development',
   runtimeCaching: [
     {
-      urlPattern: /^https:\/\/api\.smartgardenbot\.io\/api\/v1\/.*/i,
+      urlPattern: /^https:\/\/api\.smartgardenbot\.com\/api\/v1\/.*/i,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'api-cache',
@@ -32,6 +32,7 @@ const withPWA = require('next-pwa')({
 });
 
 const nextConfig = {
+  output: 'standalone',
   images: {
     domains: ['images.unsplash.com', 'via.placeholder.com'],
   },

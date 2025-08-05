@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for Go API server
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 # Install necessary packages
 RUN apk add --no-cache git ca-certificates tzdata
@@ -34,11 +34,7 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/main .
 
-# Copy migrations directory
-COPY --from=builder /app/migrations ./migrations
-
-# Copy static files for Swagger UI
-COPY --from=builder /app/static ./static
+# Note: migrations and static directories will be created by the application if needed
 
 # Change ownership to non-root user
 RUN chown -R appuser:appgroup /root
