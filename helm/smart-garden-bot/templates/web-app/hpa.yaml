@@ -1,0 +1,35 @@
+{{- if and .Values.webApp.enabled .Values.webApp.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "smart-garden-bot.fullname" . }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "smart-garden-bot.labels.web" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "smart-garden-bot.fullname" . }}-web
+  minReplicas: {{ .Values.webApp.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.webApp.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.webApp.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.webApp.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.webApp.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.webApp.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,315 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gardencontrollers.garden.smartbot.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  group: garden.smartbot.io
+  names:
+    kind: GardenController
+    listKind: GardenControllerList
+    plural: gardencontrollers
+    singular: gardencontroller
+    shortNames:
+    - gc
+    - garden
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Status
+      type: string
+      jsonPath: .status.phase
+    - name: Zones
+      type: integer
+      jsonPath: .status.zonesCount
+    - name: Weather Provider
+      type: string
+      jsonPath: .spec.weatherIntegration.provider
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - zones
+            - weatherIntegration
+            properties:
+              zones:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  required:
+                  - name
+                  - schedule
+                  properties:
+                    name:
+                      type: string
+                      pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+                      maxLength: 63
+                    description:
+                      type: string
+                      maxLength: 256
+                    plantType:
+                      type: string
+                      enum: ["vegetables", "flowers", "herbs", "fruits", "lawn", "trees", "shrubs"]
+                    sensors:
+                      type: array
+                      items:
+                        type: string
+                        pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+                    schedule:
+                      type: string
+                      pattern: '^(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every (\d+(ns|us|µs|ms|s|m|h))+)|((((\d+,)+\d+|(\d+(\/|-)\d+)|\d+|\*) ?){5,7})$'
+                    wateringDuration:
+                      type: string
+                      pattern: '^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$'
+                      default: "15m"
+                    moistureThreshold:
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                      default: 30
+                    enabled:
+                      type: boolean
+                      default: true
+              weatherIntegration:
+                type: object
+                required:
+                - provider
+                - location
+                properties:
+                  provider:
+                    type: string
+                    enum: ["openweather", "noaa", "weatherapi", "openmeteo"]
+                  location:
+                    type: string
+                    pattern: '^\d{5}(-\d{4})?$|^[0-9.-]+,[0-9.-]+$'
+                  rainThreshold:
+                    type: number
+                    minimum: 0
+                    default: 0.1
+                  forecastDays:
+                    type: integer
+                    minimum: 1
+                    maximum: 10
+                    default: 3
+                  enabled:
+                    type: boolean
+                    default: true
+              deviceConfig:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: ["ecowitt", "mqtt", "http"]
+                    default: "ecowitt"
+                  endpoint:
+                    type: string
+                    format: uri
+                  credentials:
+                    type: object
+                    properties:
+                      secretRef:
+                        type: object
+                        required:
+                        - name
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            type: string
+                            default: "credentials"
+                  timeout:
+                    type: string
+                    pattern: '^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$'
+                    default: "30s"
+              notifications:
+                type: object
+                properties:
+                  webhook:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      secretRef:
+                        type: object
+                        required:
+                        - name
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            type: string
+                            default: "webhook-secret"
+                  email:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                        default: false
+                      recipients:
+                        type: array
+                        items:
+                          type: string
+                          format: email
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Active", "Error", "Paused"]
+              conditions:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - type
+                  - status
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                      enum: ["True", "False", "Unknown"]
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+              zonesCount:
+                type: integer
+              lastWateringTime:
+                type: string
+                format: date-time
+              nextScheduledTime:
+                type: string
+                format: date-time
+              weatherStatus:
+                type: object
+                properties:
+                  lastUpdated:
+                    type: string
+                    format: date-time
+                  forecastSummary:
+                    type: string
+                  rainProbability:
+                    type: number
+              deviceStatus:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  lastSeen:
+                    type: string
+                    format: date-time
+                  error:
+                    type: string
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sensors.garden.smartbot.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  group: garden.smartbot.io
+  names:
+    kind: Sensor
+    listKind: SensorList
+    plural: sensors
+    singular: sensor
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Type
+      type: string
+      jsonPath: .spec.type
+    - name: Status
+      type: string
+      jsonPath: .status.status
+    - name: Last Reading
+      type: date
+      jsonPath: .status.lastReading
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - type
+            - deviceId
+            properties:
+              type:
+                type: string
+                enum: ["soil-moisture", "temperature", "humidity", "solar-radiation", "rainfall", "wind", "barometric-pressure"]
+              deviceId:
+                type: string
+              location:
+                type: object
+                properties:
+                  zone:
+                    type: string
+                  coordinates:
+                    type: object
+                    properties:
+                      x:
+                        type: number
+                      y:
+                        type: number
+              calibration:
+                type: object
+                properties:
+                  offset:
+                    type: number
+                  multiplier:
+                    type: number
+                    default: 1.0
+              thresholds:
+                type: object
+                properties:
+                  min:
+                    type: number
+                  max:
+                    type: number
+                  critical:
+                    type: number
+          status:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: ["Active", "Inactive", "Error"]
+              lastReading:
+                type: string
+                format: date-time
+              currentValue:
+                type: number
+              batteryLevel:
+                type: integer
+                minimum: 0
+                maximum: 100
+    subresources:
+      status: {}

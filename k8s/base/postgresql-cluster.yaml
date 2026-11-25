@@ -1,0 +1,153 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: smart-garden-bot-postgres
+  namespace: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+      effective_cache_size: "1GB"
+      maintenance_work_mem: "64MB"
+      checkpoint_completion_target: "0.7"
+      wal_buffers: "16MB"
+      default_statistics_target: "100"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      work_mem: "4MB"
+      min_wal_size: "1GB"
+      max_wal_size: "4GB"
+      max_worker_processes: "8"
+      max_parallel_workers_per_gather: "4"
+      max_parallel_workers: "8"
+      max_parallel_maintenance_workers: "4"
+      # Logging
+      log_statement: "all"
+      log_min_duration_statement: "1000"
+      log_line_prefix: "%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h "
+      # Extensions
+      shared_preload_libraries: "pg_stat_statements,auto_explain"
+      # Auto explain for slow queries
+      auto_explain.log_min_duration: "5s"
+      auto_explain.log_analyze: "true"
+      auto_explain.log_buffers: "true"
+      auto_explain.log_timing: "true"
+      auto_explain.log_triggers: "true"
+      auto_explain.log_verbose: "true"
+      auto_explain.log_nested_statements: "true"
+
+  bootstrap:
+    initdb:
+      database: smartgarden
+      owner: smartgarden
+      secret:
+        name: smart-garden-bot-postgres-auth
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        - CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+        - CREATE EXTENSION IF NOT EXISTS "vector";
+        - CREATE EXTENSION IF NOT EXISTS "timescaledb" CASCADE;
+        - CREATE SCHEMA IF NOT EXISTS auth;
+        - CREATE SCHEMA IF NOT EXISTS gardens;
+        - CREATE SCHEMA IF NOT EXISTS sensors;
+        - CREATE SCHEMA IF NOT EXISTS billing;
+        - CREATE SCHEMA IF NOT EXISTS analytics;
+        - GRANT ALL PRIVILEGES ON SCHEMA auth TO smartgarden;
+        - GRANT ALL PRIVILEGES ON SCHEMA gardens TO smartgarden;
+        - GRANT ALL PRIVILEGES ON SCHEMA sensors TO smartgarden;
+        - GRANT ALL PRIVILEGES ON SCHEMA billing TO smartgarden;
+        - GRANT ALL PRIVILEGES ON SCHEMA analytics TO smartgarden;
+
+  storage:
+    size: 100Gi
+    storageClass: gp3
+
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1000m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              cnpg.io/cluster: smart-garden-bot-postgres
+          topologyKey: kubernetes.io/hostname
+
+  nodeMaintenanceWindow:
+    inProgress: false
+    reusePVC: true
+
+  monitoring:
+    enabled: true
+    disableDefaultQueries: false
+
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: "s3://smart-garden-bot-backups/postgres"
+      s3Credentials:
+        accessKeyId:
+          name: postgres-backup-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: postgres-backup-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        retention: "7d"
+      data:
+        retention: "30d"
+        compression: gzip
+        encryption: AES256
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: smart-garden-bot-postgres-backup
+  namespace: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  backupOwnerReference: self
+  cluster:
+    name: smart-garden-bot-postgres
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smart-garden-bot-postgres-auth
+  namespace: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+type: kubernetes.io/basic-auth
+data:
+  username: c21hcnRnYXJkZW4=  # smartgarden
+  password: Y2hhbmdlbWU=      # changeme - should be replaced with real password
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-backup-credentials
+  namespace: smart-garden-bot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+type: Opaque
+data:
+  ACCESS_KEY_ID: Y2hhbmdlbWU=     # changeme - should be replaced with real credentials
+  SECRET_ACCESS_KEY: Y2hhbmdlbWU= # changeme - should be replaced with real credentials

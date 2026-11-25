@@ -1,0 +1,62 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smart-garden-bot-postgres-auth
+  namespace: smart-garden-bot-db
+type: kubernetes.io/basic-auth
+stringData:
+  username: smartgarden
+  password: localdev123
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: smart-garden-bot-postgres
+  namespace: smart-garden-bot-db
+spec:
+  instances: 1  # Single instance for local development
+  
+  # Minimal configuration for local development
+  postgresql:
+    parameters:
+      max_connections: "50"
+      shared_buffers: "64MB"
+      log_statement: "none"
+
+  bootstrap:
+    initdb:
+      database: smartgarden
+      owner: smartgarden
+      secret:
+        name: smart-garden-bot-postgres-auth
+
+  storage:
+    size: 10Gi  # Smaller for local development
+    storageClass: standard
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+
+  # monitoring disabled for local development
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: smart-garden-bot-db
+spec:
+  selector:
+    cnpg.io/cluster: smart-garden-bot-postgres
+    role: primary
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+  type: ClusterIP
